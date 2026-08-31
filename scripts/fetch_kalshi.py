@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 BASE = "https://api.elections.kalshi.com/trade-api/v2/markets"
 PAGE_LIMIT = 1000
-MAX_PAGES = 5  # 5 x 1000 = up to 5000 open markets
+MAX_PAGES = 10  # 10 x 1000 = up to 10,000 open markets
 
 def fetch_page(cursor=None):
     url = f"{BASE}?status=open&limit={PAGE_LIMIT}"
@@ -31,6 +31,15 @@ def main():
         if not cursor or not markets:
             break
 
+    # Kalshi auto-generates huge numbers of "multivariate cross-category" parlay
+    # markets (tickers starting KXMVE...) that flood the default listing and
+    # crowd out plain single-event markets. Drop them.
+    real_markets = [
+        m for m in all_markets
+        if not (m.get("ticker") or "").startswith("KXMVE")
+        and m.get("strike_type") != "custom"
+    ]
+
     # Keep only the fields the frontend actually needs, to keep the file small.
     def to_float(v):
         try:
@@ -47,7 +56,7 @@ def main():
             "no_ask": to_float(m.get("no_ask_dollars")),
             "close_time": m.get("close_time"),
         }
-        for m in all_markets
+        for m in real_markets
     ]
     slim = [m for m in slim if m["yes_ask"] is not None and m["no_ask"] is not None]
 
@@ -60,7 +69,7 @@ def main():
     with open("kalshi-markets.json", "w") as f:
         json.dump(out, f)
 
-    print(f"Wrote {len(slim)} markets")
+    print(f"Fetched {len(all_markets)} total, {len(real_markets)} after dropping combos, {len(slim)} with valid prices")
 
 if __name__ == "__main__":
     main()
