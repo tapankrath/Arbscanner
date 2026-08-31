@@ -776,6 +776,19 @@ function datesCompatible(kCloseStr, pCloseStr){
   return Math.abs(kd.getTime() - pd.getTime()) <= DATE_TOLERANCE_MS;
 }
 
+// A "range bucket" market ("price lands between $70,000 and $74,999.99") and a
+// "single threshold" market ("price is above $74,000") don't have complementary
+// payoffs even when their numbers and dates line up — e.g. if the real price
+// ends up at $76,000, a range-bucket "Yes" loses AND a threshold "No" also
+// loses simultaneously, the opposite of a hedge. Reject the pair if exactly
+// one side reads as an explicit "X to Y" range and the other doesn't.
+function isRangeQuestion(text){
+  return /\d[\d,]*\.?\d*\s+to\s+\$?\d[\d,]*\.?\d*/i.test(text || '');
+}
+function structureCompatible(kFullText, pText){
+  return isRangeQuestion(kFullText) === isRangeQuestion(pText);
+}
+
 function mapPolyMarket(m){
   let outcomes = [], prices = [];
   try { outcomes = JSON.parse(m.outcomes || '[]'); } catch(e){}
@@ -918,6 +931,7 @@ async function runAutoScan(){
       const kFullText = (km.title||'') + ' ' + (km.subtitle||'');
       if(!numbersCompatible(pm.title, kFullText)) return; // e.g. "$150,000" vs "$76,000" — different strikes, not a hedge
       if(!datesCompatible(km.close_time, pm.endDate)) return; // e.g. resolves in 1 day vs resolves in 4 months — not the same bet
+      if(!structureCompatible(kFullText, pm.title)) return; // range bucket vs single threshold — not complementary
 
       const closeTime = candidateCloseTime(km.close_time, pm.endDate);
 
@@ -961,7 +975,15 @@ function renderResults(){
 
   // --- Verified matches: high price agreement is independent evidence of a real
   // match, separate from margin. Shown as a trust reference, not ranked by profit. ---
-  let verifiedPool = lastCandidates.filter(c => c.priceAgreement != null && c.priceAgreement >= 0.90 && c.sim >= 0.35);
+  // Prices near 0 or 1 trivially "agree" on both platforms (there's nowhere else
+  // for them to go) regardless of whether the match is even correct — e.g. every
+  // non-contender team shows ~1%/~0% to win a league. Require both sides to be
+  // in a meaningfully uncertain range so agreement here actually means something.
+  let verifiedPool = lastCandidates.filter(c =>
+    c.priceAgreement != null && c.priceAgreement >= 0.90 && c.sim >= 0.35 &&
+    c.kalshi.yes_ask >= 0.05 && c.kalshi.yes_ask <= 0.95 &&
+    c.poly.yesAsk >= 0.05 && c.poly.yesAsk <= 0.95
+  );
   if(selectedCloseDays > 0){
     const cutoff = Date.now() + selectedCloseDays * 24 * 60 * 60 * 1000;
     verifiedPool = verifiedPool.filter(c => c.closeTime && c.closeTime.getTime() <= cutoff);
@@ -982,17 +1004,61 @@ function renderResults(){
     verifiedSection.style.display = 'block';
     verifiedResultsEl.innerHTML = '';
     verifiedShown.forEach(c => {
-      const el = document.createElement('div');
-      el.className = 'verified-card';
-      el.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+      const closeLabel = formatCloseTime(c.closeTime);
+      const kUrl = kalshiUrl(c.kalshi.ticker);
+      const pUrl = polymarketUrl(c.poly.slug);
+
+      const card = document.createElement('div');
+      card.className = 'match-card';
+
+      const summary = document.createElement('div');
+      summary.className = 'match-summary';
+      summary.innerHTML = `
+        <div class="match-summary-top">
           <span class="match-badge">${Math.round(c.sim*100)}% title match</span>
           <span class="verified-agree">${Math.round(c.priceAgreement*100)}% price agree</span>
+          <span class="chevron">›</span>
         </div>
-        <div class="match-preview" style="margin-top:8px;">${c.kalshi.title} ↔ ${c.poly.title}</div>
-        <div class="match-close">${formatCloseTime(c.closeTime)} · Kalshi Yes ${Math.round(c.kalshi.yes_ask*100)}% vs Polymarket Yes ${Math.round(c.poly.yesAsk*100)}%</div>
+        <div class="match-preview">${c.kalshi.title} ↔ ${c.poly.title}</div>
+        <div class="match-close">${closeLabel}</div>
       `;
-      verifiedResultsEl.appendChild(el);
+
+      const detail = document.createElement('div');
+      detail.className = 'match-detail';
+      detail.innerHTML = `
+        <div class="match-sidebyside">
+          <div class="match-side">
+            <div class="match-side-label">Kalshi</div>
+            <div class="match-side-title">${c.kalshi.title}${c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''}</div>
+            <div class="match-side-price mono">Y ${c.kalshi.yes_ask} / N ${c.kalshi.no_ask}</div>
+            ${kUrl ? `<a href="${kUrl}" target="_blank" rel="noopener" class="platform-link">Open on Kalshi ↗</a>` : ''}
+          </div>
+          <div class="match-side">
+            <div class="match-side-label">Polymarket</div>
+            <div class="match-side-title">${c.poly.title}</div>
+            <div class="match-side-price mono">Y ${c.poly.yesAsk} / N ${c.poly.noAsk}</div>
+            ${pUrl ? `<a href="${pUrl}" target="_blank" rel="noopener" class="platform-link">Open on Polymarket ↗</a>` : ''}
+          </div>
+        </div>
+        <div class="match-meta">Margin: ${(c.netProfit*100).toFixed(2)}% (not the point of this list — this is a match-quality reference)</div>
+        <button class="use-btn">Use this pair in ticket →</button>
+      `;
+
+      detail.querySelectorAll('.platform-link').forEach(a => a.onclick = (e) => e.stopPropagation());
+
+      summary.onclick = () => card.classList.toggle('open');
+
+      detail.querySelector('.use-btn').onclick = (e) => {
+        e.stopPropagation();
+        selectedKalshi = { id: c.kalshi.ticker, title: c.kalshi.title + (c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''), yesAsk: c.kalshi.yes_ask, noAsk: c.kalshi.no_ask };
+        selectedPoly = { id: c.poly.id, title: c.poly.title, slug: c.poly.slug, yesTokenId: c.poly.yesTokenId, noTokenId: c.poly.noTokenId, yesAsk: c.poly.yesAsk, noAsk: c.poly.noAsk };
+        openManualSection();
+        maybeShowTicket();
+      };
+
+      card.appendChild(summary);
+      card.appendChild(detail);
+      verifiedResultsEl.appendChild(card);
     });
   } else {
     verifiedSection.style.display = 'none';
