@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Spread — Kalshi × Polymarket</title>
+
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#2557D6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Spread">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #F6F7F9;
+    --panel: #FFFFFF;
+    --panel-2: #EEF1F5;
+    --line: #DBE0E6;
+    --text: #171A21;
+    --sub: #5B6472;
+    --up: #16824F;
+    --down: #C82E2E;
+    --accent: #2557D6;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:40px;
+  }
+  .mono{font-family:'Roboto Mono',monospace;}
+
+  header{
+    padding:22px 18px 16px;
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:var(--bg); z-index:10;
+  }
+  header h1{
+    font-size:19px; margin:0 0 3px; font-weight:700; letter-spacing:-0.01em;
+  }
+  header p{margin:0; font-size:13px; color:var(--sub); line-height:1.5;}
+
+  .wrap{max-width:640px; margin:0 auto; padding:0 14px;}
+
+  .search-row{
+    display:flex; gap:8px; margin-top:16px;
+  }
+  input[type=text]{
+    flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text);
+    padding:11px 13px; border-radius:9px; font-size:15px; font-family:inherit;
+  }
+  input[type=text]:focus{outline:none; border-color:var(--accent);}
+  button{
+    background:var(--accent); color:#fff; border:none; border-radius:9px;
+    padding:11px 16px; font-size:14px; font-weight:600; font-family:inherit;
+    cursor:pointer; white-space:nowrap;
+  }
+  button:active{opacity:0.8;}
+  button.ghost{
+    background:transparent; border:1px solid var(--line); color:var(--sub);
+  }
+  button:disabled{opacity:0.45; cursor:default;}
+
+  .cols{display:flex; flex-direction:column; gap:12px; margin-top:16px;}
+  @media(min-width:560px){ .cols{flex-direction:row;} .cols > div{flex:1; min-width:0;} }
+
+  .platform-label{
+    font-size:11px; font-weight:600; color:var(--sub); text-transform:uppercase;
+    letter-spacing:0.06em; margin-bottom:6px; padding-left:2px;
+  }
+  .list{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    max-height:280px; overflow-y:auto;
+  }
+  .item{
+    padding:11px 12px; border-bottom:1px solid var(--line); cursor:pointer;
+    display:flex; justify-content:space-between; align-items:center; gap:8px;
+  }
+  .item:last-child{border-bottom:none;}
+  .item:active{background:var(--panel-2);}
+  .item.selected{background:rgba(91,141,239,0.15); border-left:3px solid var(--accent);}
+  .item .title{font-size:13.5px; line-height:1.35; flex:1;}
+  .item .px{font-size:12px; color:var(--sub); white-space:nowrap;}
+  .empty-note{padding:16px 12px; font-size:13px; color:var(--sub);}
+
+  .ticket{
+    margin-top:20px; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; padding:16px;
+  }
+  .ticket h2{font-size:14px; margin:0 0 12px; color:var(--sub); font-weight:600;}
+  .leg{
+    display:flex; justify-content:space-between; font-size:13.5px;
+    padding:8px 0; border-bottom:1px solid var(--line);
+  }
+  .leg:last-of-type{border-bottom:none;}
+  .leg .name{color:var(--sub);}
+
+  .result{
+    margin-top:14px; padding:14px; border-radius:10px; text-align:center;
+  }
+  .result.profit{background:rgba(51,209,122,0.12); border:1px solid rgba(51,209,122,0.35);}
+  .result.loss{background:rgba(255,93,93,0.10); border:1px solid rgba(255,93,93,0.3);}
+  .result .big{font-size:26px; font-weight:700;}
+  .result.profit .big{color:var(--up);}
+  .result.loss .big{color:var(--down);}
+  .result .small{font-size:12px; color:var(--sub); margin-top:4px;}
+
+  .fees{
+    margin-top:16px; padding-top:14px; border-top:1px solid var(--line);
+  }
+  .fee-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; font-size:13px;}
+  .fee-row input[type=number]{
+    width:80px; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:6px 8px; border-radius:7px; font-family:'Roboto Mono',monospace; font-size:13px; text-align:right;
+  }
+
+  .status{font-size:12.5px; color:var(--sub); margin-top:10px; min-height:16px;}
+  .status.err{color:var(--down);}
+
+  .disclaimer{
+    margin-top:26px; padding:12px 14px; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; font-size:12px; color:var(--sub); line-height:1.6;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>Spread</h1>
+    <p>Search the same event on Kalshi and Polymarket, pick a market from each, and see the hedged cost after fees — only worth trading if it lands under $1.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="search-row">
+    <input type="text" id="query" placeholder="e.g. India Australia T20" />
+    <button id="searchBtn">Search</button>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="platform-label">Kalshi</div>
+      <div class="list" id="kalshiList"><div class="empty-note">Search to load markets.</div></div>
+    </div>
+    <div>
+      <div class="platform-label">Polymarket</div>
+      <div class="list" id="polyList"><div class="empty-note">Search to load markets.</div></div>
+    </div>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="ticket" id="ticket" style="display:none;">
+    <h2>Hedge ticket</h2>
+    <div class="leg"><span class="name" id="kLegName">Kalshi</span><span class="mono" id="kLegPrice">—</span></div>
+    <div class="leg"><span class="name" id="pLegName">Polymarket</span><span class="mono" id="pLegPrice">—</span></div>
+
+    <div class="fees">
+      <div class="fee-row"><span>Kalshi taker fee (auto, editable override %)</span><input type="number" id="kFee" value="1.5" step="0.1"></div>
+      <div class="fee-row"><span>Polymarket fee / slippage buffer %</span><input type="number" id="pFee" value="0.5" step="0.1"></div>
+    </div>
+
+    <button id="calcBtn" style="width:100%; margin-top:6px;">Compute both directions</button>
+
+    <div id="resultsBox"></div>
+  </div>
+
+  <div class="disclaimer">
+    Prices are pulled live from each platform's public market-data endpoint and reflect indicative ask prices, not a guaranteed fill — order books can move between when you see a quote and when you trade. Fees shown are editable estimates; confirm exact fees on each platform before sizing a trade. This tool doesn't place trades or hold funds, and nothing here is financial advice — verify contract terms (resolution source, settlement date) match exactly on both sides before treating two markets as a true hedge.
+  </div>
+
+</div>
+
+<script>
+const kalshiList = document.getElementById('kalshiList');
+const polyList = document.getElementById('polyList');
+const statusEl = document.getElementById('status');
+const ticket = document.getElementById('ticket');
+
+let kalshiMarkets = [];
+let polyMarkets = [];
+let selectedKalshi = null;
+let selectedPoly = null;
+
+function setStatus(msg, isErr){
+  statusEl.textContent = msg || '';
+  statusEl.className = 'status' + (isErr ? ' err' : '');
+}
+
+function matchesAllWords(text, words){
+  const t = (text || '').toLowerCase();
+  return words.every(w => t.includes(w));
+}
+
+async function fetchKalshi(query){
+  // Kalshi public markets endpoint. If this base URL has moved, check docs.kalshi.com for the current one.
+  const url = `https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=200`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Kalshi request failed (' + res.status + ')');
+  const data = await res.json();
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  return (data.markets || []).filter(m =>
+    matchesAllWords((m.title||'') + ' ' + (m.subtitle||''), words)
+  ).slice(0, 30).map(m => ({
+    id: m.ticker,
+    title: m.title + (m.subtitle ? ' — ' + m.subtitle : ''),
+    yesAsk: m.yes_ask != null ? m.yes_ask / 100 : null,
+    noAsk: m.no_ask != null ? m.no_ask / 100 : null,
+  }));
+}
+
+async function fetchPolymarket(query){
+  const url = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=200`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Polymarket request failed (' + res.status + ')');
+  const data = await res.json();
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  return (data || []).filter(m => matchesAllWords(m.question, words))
+    .slice(0, 30).map(m => {
+      let outcomes = [], prices = [];
+      try { outcomes = JSON.parse(m.outcomes || '[]'); } catch(e){}
+      try { prices = JSON.parse(m.outcomePrices || '[]'); } catch(e){}
+      const yesIdx = outcomes.findIndex(o => o.toLowerCase() === 'yes');
+      const noIdx = outcomes.findIndex(o => o.toLowerCase() === 'no');
+      return {
+        id: m.id,
+        title: m.question,
+        yesAsk: yesIdx > -1 ? parseFloat(prices[yesIdx]) : null,
+        noAsk: noIdx > -1 ? parseFloat(prices[noIdx]) : null,
+      };
+    });
+}
+
+function renderList(container, markets, platform){
+  if(markets.length === 0){
+    container.innerHTML = '<div class="empty-note">No open markets matched. Try broader keywords.</div>';
+    return;
+  }
+  container.innerHTML = '';
+  markets.forEach((m, i) => {
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `<span class="title">${m.title}</span><span class="px mono">Y ${m.yesAsk ?? '—'} / N ${m.noAsk ?? '—'}</span>`;
+    div.onclick = () => {
+      container.querySelectorAll('.item').forEach(el => el.classList.remove('selected'));
+      div.classList.add('selected');
+      if(platform === 'kalshi') selectedKalshi = m; else selectedPoly = m;
+      maybeShowTicket();
+    };
+    container.appendChild(div);
+  });
+}
+
+function maybeShowTicket(){
+  if(selectedKalshi && selectedPoly){
+    ticket.style.display = 'block';
+    document.getElementById('kLegName').textContent = 'Kalshi — ' + selectedKalshi.title;
+    document.getElementById('pLegName').textContent = 'Polymarket — ' + selectedPoly.title;
+    document.getElementById('kLegPrice').textContent = `Y ${selectedKalshi.yesAsk} / N ${selectedKalshi.noAsk}`;
+    document.getElementById('pLegPrice').textContent = `Y ${selectedPoly.yesAsk} / N ${selectedPoly.noAsk}`;
+    document.getElementById('resultsBox').innerHTML = '';
+    ticket.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+}
+
+document.getElementById('searchBtn').onclick = async () => {
+  const q = document.getElementById('query').value.trim();
+  if(!q){ setStatus('Type a keyword first.', true); return; }
+  setStatus('Loading markets from both platforms…');
+  kalshiList.innerHTML = '<div class="empty-note">Loading…</div>';
+  polyList.innerHTML = '<div class="empty-note">Loading…</div>';
+  selectedKalshi = null; selectedPoly = null;
+  ticket.style.display = 'none';
+
+  const [kRes, pRes] = await Promise.allSettled([fetchKalshi(q), fetchPolymarket(q)]);
+
+  if(kRes.status === 'fulfilled'){
+    kalshiMarkets = kRes.value;
+    renderList(kalshiList, kalshiMarkets, 'kalshi');
+  } else {
+    kalshiList.innerHTML = '<div class="empty-note">Couldn\'t load Kalshi markets — the endpoint may be unreachable from this browser. See note below.</div>';
+  }
+
+  if(pRes.status === 'fulfilled'){
+    polyMarkets = pRes.value;
+    renderList(polyList, polyMarkets, 'poly');
+  } else {
+    polyList.innerHTML = '<div class="empty-note">Couldn\'t load Polymarket markets — the endpoint may be unreachable from this browser. See note below.</div>';
+  }
+
+  if(kRes.status === 'rejected' || pRes.status === 'rejected'){
+    setStatus('One or both sources failed to load. Open browser dev tools → Network tab to see the exact error.', true);
+  } else {
+    setStatus(`Loaded ${kalshiMarkets.length} Kalshi and ${polyMarkets.length} Polymarket matches.`);
+  }
+};
+
+document.getElementById('calcBtn').onclick = () => {
+  const kFeePct = parseFloat(document.getElementById('kFee').value) / 100 || 0;
+  const pFeePct = parseFloat(document.getElementById('pFee').value) / 100 || 0;
+
+  const dirs = [
+    { label: 'Kalshi No + Polymarket Yes', a: selectedKalshi.noAsk, b: selectedPoly.yesAsk },
+    { label: 'Kalshi Yes + Polymarket No', a: selectedKalshi.yesAsk, b: selectedPoly.noAsk },
+  ];
+
+  const box = document.getElementById('resultsBox');
+  box.innerHTML = '';
+
+  dirs.forEach(d => {
+    if(d.a == null || d.b == null) return;
+    const rawCost = d.a + d.b;
+    const fees = d.a * kFeePct + d.b * pFeePct;
+    const totalCost = rawCost + fees;
+    const netProfit = 1 - totalCost;
+    const isProfit = netProfit > 0;
+
+    const el = document.createElement('div');
+    el.className = 'result ' + (isProfit ? 'profit' : 'loss');
+    el.innerHTML = `
+      <div class="small">${d.label}</div>
+      <div class="big mono">${isProfit ? '+' : ''}${(netProfit*100).toFixed(2)}%</div>
+      <div class="small">cost $${rawCost.toFixed(3)} + fees $${fees.toFixed(3)} = $${totalCost.toFixed(3)} per $1 payout</div>
+    `;
+    box.appendChild(el);
+  });
+
+  if(box.innerHTML === ''){
+    box.innerHTML = '<div class="empty-note">Missing a price on one side — can\'t compute this pair.</div>';
+  }
+};
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>
