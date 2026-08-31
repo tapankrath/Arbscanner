@@ -8,24 +8,25 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="theme-color" content="#2557D6">
+<meta name="theme-color" content="#1E3A5F">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Spread">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap');
 
   :root{
-    --bg: #F6F7F9;
+    --bg: #FAF9F6;
     --panel: #FFFFFF;
-    --panel-2: #EEF1F5;
-    --line: #DBE0E6;
-    --text: #171A21;
-    --sub: #5B6472;
-    --up: #16824F;
-    --down: #C82E2E;
-    --accent: #2557D6;
+    --panel-2: #F1EFE9;
+    --line: #E5E1D8;
+    --text: #14161C;
+    --sub: #666A75;
+    --up: #146C46;
+    --down: #B13328;
+    --accent: #1E3A5F;
+    --accent-soft: #E8EDF3;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -48,16 +49,21 @@
   .logo-btn svg{flex-shrink:0;}
 
   header{
-    padding:22px 18px 16px;
+    padding:32px 18px 20px;
     border-bottom:1px solid var(--line);
     position:sticky; top:0; background:var(--bg); z-index:10;
+    text-align:center;
   }
   header h1{
-    font-size:19px; margin:0 0 3px; font-weight:700; letter-spacing:-0.01em;
+    font-size:23px; margin:0 0 10px; font-weight:700; letter-spacing:-0.01em;
+    font-family:'Source Serif 4', Georgia, serif;
   }
-  header p{margin:0; font-size:13px; color:var(--sub); line-height:1.5;}
+  header p{
+    margin:0 auto; font-size:13.5px; color:var(--sub); line-height:1.6;
+    max-width:400px;
+  }
 
-  .wrap{max-width:640px; margin:0 auto; padding:0 14px;}
+  .wrap{max-width:660px; margin:0 auto; padding:0 16px;}
 
   .search-row{
     display:flex; gap:8px; margin-top:16px;
@@ -71,10 +77,13 @@
     background:var(--accent); color:#fff; border:none; border-radius:9px;
     padding:11px 16px; font-size:14px; font-weight:600; font-family:inherit;
     cursor:pointer; white-space:nowrap;
+    box-shadow: 0 1px 2px rgba(30,58,95,0.18);
+    transition: opacity 0.15s, transform 0.05s;
   }
-  button:active{opacity:0.8;}
+  button:hover{opacity:0.93;}
+  button:active{opacity:0.85; transform:translateY(1px);}
   button.ghost{
-    background:transparent; border:1px solid var(--line); color:var(--sub);
+    background:transparent; border:1px solid var(--line); color:var(--sub); box-shadow:none;
   }
   button:disabled{opacity:0.45; cursor:default;}
 
@@ -116,6 +125,11 @@
   }
   .leg:last-of-type{border-bottom:none;}
   .leg .name{color:var(--sub);}
+  .platform-link{
+    display:inline-block; font-size:11.5px; color:var(--accent); text-decoration:none;
+    margin:2px 0 8px; font-weight:600;
+  }
+  .platform-link:hover{text-decoration:underline;}
 
   .result{
     margin-top:14px; padding:14px; border-radius:10px; text-align:center;
@@ -140,11 +154,13 @@
   .status.err{color:var(--down);}
 
   .scan-section{
-    margin-top:18px; padding:16px; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    margin-top:26px; padding:20px 18px; background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    border-top:3px solid var(--accent);
+    box-shadow: 0 1px 2px rgba(20,22,28,0.04), 0 8px 24px rgba(30,58,95,0.07);
   }
   .scan-header{display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;}
-  .scan-title{font-size:15px; font-weight:700;}
-  .scan-sub{font-size:12.5px; color:var(--sub); margin-top:3px; line-height:1.5; max-width:340px;}
+  .scan-title{font-size:17px; font-weight:700; font-family:'Source Serif 4', Georgia, serif;}
+  .scan-sub{font-size:12.5px; color:var(--sub); margin-top:5px; line-height:1.55; max-width:340px;}
   .scan-controls{display:flex; gap:8px; align-items:center;}
   select#topN{
     background:var(--panel-2); border:1px solid var(--line); color:var(--text);
@@ -219,8 +235,8 @@
     <h1>
       <button id="logoHome" class="logo-btn" title="Back to top / reset">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M3 17L9 11L13 15L21 7" stroke="#2557D6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M15 7H21V13" stroke="#2557D6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 17L9 11L13 15L21 7" stroke="#1E3A5F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M15 7H21V13" stroke="#1E3A5F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         Spread
       </button>
@@ -277,7 +293,9 @@
   <div class="ticket" id="ticket" style="display:none;">
     <h2>Hedge ticket</h2>
     <div class="leg"><span class="name" id="kLegName">Kalshi</span><span class="mono" id="kLegPrice">—</span></div>
+    <a id="kLegLink" href="#" target="_blank" rel="noopener" class="platform-link" style="display:none;">Open on Kalshi ↗</a>
     <div class="leg"><span class="name" id="pLegName">Polymarket</span><span class="mono" id="pLegPrice">—</span></div>
+    <a id="pLegLink" href="#" target="_blank" rel="noopener" class="platform-link" style="display:none;">Open on Polymarket ↗</a>
 
     <div class="fees">
       <div class="fee-row"><span>Kalshi taker fee (auto, editable override %)</span><input type="number" id="kFee" value="1.5" step="0.1"></div>
@@ -318,6 +336,16 @@ function matchesAllWords(text, words){
   return words.every(w => t.includes(w));
 }
 
+function kalshiUrl(ticker){
+  if(!ticker) return null;
+  const seriesTicker = ticker.split('-')[0].toLowerCase();
+  return `https://kalshi.com/markets/${seriesTicker}`;
+}
+function polymarketUrl(slug){
+  if(!slug) return null;
+  return `https://polymarket.com/event/${slug}`;
+}
+
 async function fetchKalshi(query){
   // Reads the snapshot built by .github/workflows/update-kalshi.yml (scripts/fetch_kalshi.py),
   // since Kalshi's API doesn't send CORS headers that allow direct browser fetches.
@@ -351,6 +379,7 @@ async function fetchPolymarket(query){
       return {
         id: m.id,
         title: m.question,
+        slug: m.slug,
         yesAsk: yesIdx > -1 ? parseFloat(prices[yesIdx]) : null,
         noAsk: noIdx > -1 ? parseFloat(prices[noIdx]) : null,
       };
@@ -384,6 +413,15 @@ function maybeShowTicket(){
     document.getElementById('pLegName').textContent = 'Polymarket — ' + selectedPoly.title;
     document.getElementById('kLegPrice').textContent = `Y ${selectedKalshi.yesAsk} / N ${selectedKalshi.noAsk}`;
     document.getElementById('pLegPrice').textContent = `Y ${selectedPoly.yesAsk} / N ${selectedPoly.noAsk}`;
+
+    const kLink = document.getElementById('kLegLink');
+    const kUrl = kalshiUrl(selectedKalshi.id);
+    if(kUrl){ kLink.href = kUrl; kLink.style.display = 'inline-block'; } else { kLink.style.display = 'none'; }
+
+    const pLink = document.getElementById('pLegLink');
+    const pUrl = polymarketUrl(selectedPoly.slug);
+    if(pUrl){ pLink.href = pUrl; pLink.style.display = 'inline-block'; } else { pLink.style.display = 'none'; }
+
     document.getElementById('resultsBox').innerHTML = '';
     ticket.scrollIntoView({behavior:'smooth', block:'nearest'});
   }
@@ -507,6 +545,7 @@ async function loadFullPolymarket(){
     return {
       id: m.id,
       title: m.question,
+      slug: m.slug,
       yesAsk: yesIdx > -1 ? parseFloat(prices[yesIdx]) : null,
       noAsk: noIdx > -1 ? parseFloat(prices[noIdx]) : null,
     };
@@ -616,6 +655,8 @@ async function runAutoScan(){
       <div class="match-preview">${c.kalshi.title} ↔ ${c.poly.title}</div>
     `;
 
+    const kUrl = kalshiUrl(c.kalshi.ticker);
+    const pUrl = polymarketUrl(c.poly.slug);
     const detail = document.createElement('div');
     detail.className = 'match-detail';
     detail.innerHTML = `
@@ -624,16 +665,20 @@ async function runAutoScan(){
           <div class="match-side-label">Kalshi</div>
           <div class="match-side-title">${c.kalshi.title}${c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''}</div>
           <div class="match-side-price mono">Y ${c.kalshi.yes_ask} / N ${c.kalshi.no_ask}</div>
+          ${kUrl ? `<a href="${kUrl}" target="_blank" rel="noopener" class="platform-link">Open on Kalshi ↗</a>` : ''}
         </div>
         <div class="match-side">
           <div class="match-side-label">Polymarket</div>
           <div class="match-side-title">${c.poly.title}</div>
           <div class="match-side-price mono">Y ${c.poly.yesAsk} / N ${c.poly.noAsk}</div>
+          ${pUrl ? `<a href="${pUrl}" target="_blank" rel="noopener" class="platform-link">Open on Polymarket ↗</a>` : ''}
         </div>
       </div>
       <div class="match-meta">${c.direction} · cost $${c.totalCost.toFixed(3)} per $1 payout</div>
       <button class="use-btn">Use this pair in ticket →</button>
     `;
+
+    detail.querySelectorAll('.platform-link').forEach(a => a.onclick = (e) => e.stopPropagation());
 
     summary.onclick = () => {
       const isOpen = card.classList.contains('open');
@@ -643,7 +688,7 @@ async function runAutoScan(){
     detail.querySelector('.use-btn').onclick = (e) => {
       e.stopPropagation();
       selectedKalshi = { id: c.kalshi.ticker, title: c.kalshi.title + (c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''), yesAsk: c.kalshi.yes_ask, noAsk: c.kalshi.no_ask };
-      selectedPoly = { id: c.poly.id, title: c.poly.title, yesAsk: c.poly.yesAsk, noAsk: c.poly.noAsk };
+      selectedPoly = { id: c.poly.id, title: c.poly.title, slug: c.poly.slug, yesAsk: c.poly.yesAsk, noAsk: c.poly.noAsk };
       openManualSection();
       maybeShowTicket();
     };
