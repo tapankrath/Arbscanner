@@ -125,6 +125,39 @@
   .status{font-size:12.5px; color:var(--sub); margin-top:10px; min-height:16px;}
   .status.err{color:var(--down);}
 
+  .scan-section{
+    margin-top:18px; padding:16px; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  }
+  .scan-header{display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;}
+  .scan-title{font-size:15px; font-weight:700;}
+  .scan-sub{font-size:12.5px; color:var(--sub); margin-top:3px; line-height:1.5; max-width:340px;}
+  .scan-controls{display:flex; gap:8px; align-items:center;}
+  select#topN{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:9px 10px; border-radius:8px; font-size:13px; font-family:inherit;
+  }
+
+  .match-card{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    padding:13px; margin-top:10px; cursor:pointer;
+  }
+  .match-card:active{opacity:0.85;}
+  .match-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;}
+  .match-badge{
+    font-size:11px; padding:3px 9px; border-radius:20px; background:var(--panel);
+    color:var(--sub); border:1px solid var(--line); white-space:nowrap;
+  }
+  .match-margin{font-weight:700; font-size:19px;}
+  .match-margin.profit{color:var(--up);}
+  .match-margin.loss{color:var(--down);}
+  .match-legs{font-size:13px; color:var(--sub); line-height:1.55;}
+  .match-legs .plat{color:var(--text); font-weight:500;}
+
+  .divider-label{
+    text-align:center; font-size:12px; color:var(--sub); margin:22px 0 4px;
+    text-transform:uppercase; letter-spacing:0.05em;
+  }
+
   .disclaimer{
     margin-top:26px; padding:12px 14px; background:var(--panel); border:1px solid var(--line);
     border-radius:10px; font-size:12px; color:var(--sub); line-height:1.6;
@@ -141,6 +174,26 @@
 </header>
 
 <div class="wrap">
+
+  <div class="scan-section">
+    <div class="scan-header">
+      <div>
+        <div class="scan-title">Top opportunities</div>
+        <div class="scan-sub">Auto-matches titles across both platforms and ranks by margin after fees. Verify resolution details before trading any match.</div>
+      </div>
+      <div class="scan-controls">
+        <select id="topN">
+          <option value="5">Top 5</option>
+          <option value="10" selected>Top 10</option>
+        </select>
+        <button id="scanBtn">Scan now</button>
+      </div>
+    </div>
+    <div class="status" id="scanStatus"></div>
+    <div id="scanResults"></div>
+  </div>
+
+  <div class="divider-label">or search a specific event</div>
 
   <div class="search-row">
     <input type="text" id="query" placeholder="e.g. India Australia T20" />
@@ -345,6 +398,151 @@ if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(() => {});
   });
 }
+
+// ---------- Auto-scan: match titles across platforms and rank by margin ----------
+
+const STOPWORDS = new Set(['will','the','a','an','is','are','be','by','of','in','on','after','before','win',
+  'to','for','this','that','or','and','with','meeting','market','above','below','at','end','from','than',
+  'close','than','have','has','not','no','yes','be','than','win','get','be']);
+
+function tokenize(text){
+  return (text || '').toLowerCase()
+    .replace(/[^a-z0-9%.\s]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length > 1 && !STOPWORDS.has(t));
+}
+
+async function loadFullPolymarket(){
+  const url = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=1000&order=volume24hr&ascending=false`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Polymarket request failed (' + res.status + ')');
+  const data = await res.json();
+  return (data || []).map(m => {
+    let outcomes = [], prices = [];
+    try { outcomes = JSON.parse(m.outcomes || '[]'); } catch(e){}
+    try { prices = JSON.parse(m.outcomePrices || '[]'); } catch(e){}
+    const yesIdx = outcomes.findIndex(o => o.toLowerCase() === 'yes');
+    const noIdx = outcomes.findIndex(o => o.toLowerCase() === 'no');
+    return {
+      id: m.id,
+      title: m.question,
+      yesAsk: yesIdx > -1 ? parseFloat(prices[yesIdx]) : null,
+      noAsk: noIdx > -1 ? parseFloat(prices[noIdx]) : null,
+    };
+  }).filter(m => m.yesAsk != null && m.noAsk != null);
+}
+
+async function runAutoScan(){
+  const topN = parseInt(document.getElementById('topN').value, 10);
+  const scanStatus = document.getElementById('scanStatus');
+  const resultsEl = document.getElementById('scanResults');
+  resultsEl.innerHTML = '';
+  scanStatus.className = 'status';
+  scanStatus.textContent = 'Loading full market lists from both platforms…';
+
+  let kalshiAll, polyAll;
+  try {
+    const kRes = await fetch('./kalshi-markets.json', { cache: 'no-store' });
+    if(!kRes.ok) throw new Error('kalshi-markets.json not found (' + kRes.status + ')');
+    kalshiAll = (await kRes.json()).markets || [];
+  } catch(e){
+    scanStatus.textContent = 'Kalshi load failed: ' + e.message;
+    scanStatus.className = 'status err';
+    return;
+  }
+
+  try {
+    polyAll = await loadFullPolymarket();
+  } catch(e){
+    scanStatus.textContent = 'Polymarket load failed: ' + e.message;
+    scanStatus.className = 'status err';
+    return;
+  }
+
+  scanStatus.textContent = `Matching ${kalshiAll.length.toLocaleString()} Kalshi × ${polyAll.length} Polymarket markets…`;
+
+  // Small delay so the status message actually paints before the (synchronous) match loop runs.
+  await new Promise(r => setTimeout(r, 30));
+
+  const kalshiTokenSets = kalshiAll.map(m => new Set(tokenize((m.title||'') + ' ' + (m.subtitle||''))));
+  const index = new Map();
+  kalshiTokenSets.forEach((set, i) => {
+    set.forEach(tok => {
+      if(!index.has(tok)) index.set(tok, []);
+      index.get(tok).push(i);
+    });
+  });
+
+  const kFeePct = 0.015, pFeePct = 0.005; // ranking assumption; adjust per-pair in the ticket below
+  const SIM_THRESHOLD = 0.35;
+  const candidates = [];
+
+  polyAll.forEach(pm => {
+    const pTokens = new Set(tokenize(pm.title));
+    if(pTokens.size === 0) return;
+    const candidateIdx = new Set();
+    pTokens.forEach(tok => {
+      const list = index.get(tok);
+      if(list) list.forEach(i => candidateIdx.add(i));
+    });
+    candidateIdx.forEach(i => {
+      const kTokens = kalshiTokenSets[i];
+      let intersect = 0;
+      pTokens.forEach(t => { if(kTokens.has(t)) intersect++; });
+      const union = pTokens.size + kTokens.size - intersect;
+      const sim = union ? intersect / union : 0;
+      if(sim < SIM_THRESHOLD) return;
+
+      const km = kalshiAll[i];
+      [
+        { label: 'Kalshi No + Polymarket Yes', a: km.no_ask, b: pm.yesAsk, kSide:'noAsk', pSide:'yesAsk' },
+        { label: 'Kalshi Yes + Polymarket No', a: km.yes_ask, b: pm.noAsk, kSide:'yesAsk', pSide:'noAsk' },
+      ].forEach(d => {
+        if(d.a == null || d.b == null) return;
+        const rawCost = d.a + d.b;
+        const fees = d.a * kFeePct + d.b * pFeePct;
+        const netProfit = 1 - rawCost - fees;
+        candidates.push({ kalshi: km, poly: pm, sim, direction: d.label, netProfit, totalCost: rawCost + fees });
+      });
+    });
+  });
+
+  candidates.sort((a, b) => b.netProfit - a.netProfit);
+  const top = candidates.slice(0, topN);
+
+  if(top.length === 0){
+    resultsEl.innerHTML = '<div class="empty-note">No confidently-matched pairs found right now. Markets shift constantly — try again shortly, or use manual search below for a specific event.</div>';
+    scanStatus.textContent = `Checked ${candidates.length} candidate pairs above the match threshold.`;
+    return;
+  }
+
+  top.forEach(c => {
+    const isProfit = c.netProfit > 0;
+    const div = document.createElement('div');
+    div.className = 'match-card';
+    div.innerHTML = `
+      <div class="match-head">
+        <span class="match-badge">${Math.round(c.sim*100)}% title match</span>
+        <span class="match-margin ${isProfit ? 'profit' : 'loss'} mono">${isProfit ? '+' : ''}${(c.netProfit*100).toFixed(2)}%</span>
+      </div>
+      <div class="match-legs">
+        <div><span class="plat">Kalshi</span> — ${c.kalshi.title}${c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''}</div>
+        <div><span class="plat">Polymarket</span> — ${c.poly.title}</div>
+        <div style="margin-top:5px;">${c.direction} · cost $${c.totalCost.toFixed(3)} per $1 payout</div>
+      </div>
+    `;
+    div.onclick = () => {
+      selectedKalshi = { id: c.kalshi.ticker, title: c.kalshi.title + (c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''), yesAsk: c.kalshi.yes_ask, noAsk: c.kalshi.no_ask };
+      selectedPoly = { id: c.poly.id, title: c.poly.title, yesAsk: c.poly.yesAsk, noAsk: c.poly.noAsk };
+      maybeShowTicket();
+    };
+    resultsEl.appendChild(div);
+  });
+
+  scanStatus.textContent = `Showing top ${top.length} of ${candidates.length} matched pairs. Ranking assumes Kalshi 1.5% / Polymarket 0.5% fees — tap a card to open its ticket and adjust.`;
+}
+
+document.getElementById('scanBtn').onclick = runAutoScan;
 </script>
 
 </body>
