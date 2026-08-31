@@ -763,6 +763,19 @@ function numbersCompatible(aText, bText){
   return a.some(x => b.some(y => Math.abs(x - y) <= Math.max(1, x * 0.02)));
 }
 
+// Catches cases the numeric check alone misses: a near-term price snapshot
+// ("above $74,000 on Sept 1") and a year-end range ("$70,000–$75,000 at end of
+// 2026") can have numerically-close thresholds while resolving months apart —
+// not the same bet. Require both platforms to close within a few days of each
+// other. Missing a date on either side doesn't block (nothing to check).
+const DATE_TOLERANCE_MS = 3 * 24 * 60 * 60 * 1000;
+function datesCompatible(kCloseStr, pCloseStr){
+  const kd = kCloseStr ? new Date(kCloseStr) : null;
+  const pd = pCloseStr ? new Date(pCloseStr) : null;
+  if(!kd || !pd || isNaN(kd.getTime()) || isNaN(pd.getTime())) return true;
+  return Math.abs(kd.getTime() - pd.getTime()) <= DATE_TOLERANCE_MS;
+}
+
 function mapPolyMarket(m){
   let outcomes = [], prices = [];
   try { outcomes = JSON.parse(m.outcomes || '[]'); } catch(e){}
@@ -904,6 +917,7 @@ async function runAutoScan(){
       const km = kalshiAll[i];
       const kFullText = (km.title||'') + ' ' + (km.subtitle||'');
       if(!numbersCompatible(pm.title, kFullText)) return; // e.g. "$150,000" vs "$76,000" — different strikes, not a hedge
+      if(!datesCompatible(km.close_time, pm.endDate)) return; // e.g. resolves in 1 day vs resolves in 4 months — not the same bet
 
       const closeTime = candidateCloseTime(km.close_time, pm.endDate);
 
