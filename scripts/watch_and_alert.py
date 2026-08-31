@@ -61,6 +61,16 @@ def numbers_compatible(a_text, b_text):
     return any(abs(x - y) <= max(1, x * 0.02) for x in a for y in b)
 
 
+DATE_TOLERANCE_SECONDS = 3 * 24 * 60 * 60
+
+
+def dates_compatible(k_close_str, p_close_str):
+    kd, pd = parse_date(k_close_str), parse_date(p_close_str)
+    if not kd or not pd:
+        return True
+    return abs((kd - pd).total_seconds()) <= DATE_TOLERANCE_SECONDS
+
+
 def fetch_json(url):
     req = urllib.request.Request(url, headers={
         "User-Agent": "Mozilla/5.0 (compatible; spread-watcher/1.0)",
@@ -192,6 +202,8 @@ def main():
 
             km = kalshi_markets[i]
             if not numbers_compatible(pm["title"], (km.get("title") or "") + " " + (km.get("subtitle") or "")):
+                continue
+            if not dates_compatible(km.get("close_time"), pm.get("endDate")):
                 continue
 
             ct = close_time(km.get("close_time"), pm.get("endDate"))
