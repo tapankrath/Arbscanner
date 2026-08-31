@@ -158,14 +158,25 @@
     border-top:3px solid var(--accent);
     box-shadow: 0 1px 2px rgba(20,22,28,0.04), 0 8px 24px rgba(30,58,95,0.07);
   }
-  .scan-header{display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;}
+  .scan-header{display:flex; flex-direction:column; gap:10px;}
   .scan-title{font-size:17px; font-weight:700; font-family:'Source Serif 4', Georgia, serif;}
-  .scan-sub{font-size:12.5px; color:var(--sub); margin-top:5px; line-height:1.55; max-width:340px;}
-  .scan-controls{display:flex; gap:8px; align-items:center;}
+  .scan-sub{font-size:12.5px; color:var(--sub); margin-top:5px; line-height:1.55;}
+  .scan-controls{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
   select#topN{
     background:var(--panel-2); border:1px solid var(--line); color:var(--text);
     padding:9px 10px; border-radius:8px; font-size:13px; font-family:inherit;
   }
+  .margin-inline{
+    display:flex; align-items:center; gap:6px; background:var(--panel-2);
+    border:1px solid var(--line); border-radius:8px; padding:6px 10px;
+  }
+  .margin-inline label{font-size:12px; color:var(--sub); white-space:nowrap;}
+  .margin-inline input{
+    width:50px; background:var(--panel); border:1px solid var(--line); color:var(--text);
+    padding:5px 6px; border-radius:6px; font-family:'Roboto Mono',monospace; font-size:13px; text-align:right;
+  }
+  .margin-inline span{font-size:13px; color:var(--sub);}
+  .scan-hint{font-size:11px; color:var(--sub); line-height:1.5;}
 
   .time-filters{
     display:flex; gap:6px; overflow-x:auto; margin-top:14px; padding-bottom:3px;
@@ -180,18 +191,7 @@
   .chip:hover{opacity:0.9;}
   .chip.active{background:var(--accent); color:#fff; border-color:var(--accent);}
 
-  .margin-control{
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-    margin-top:12px; padding-top:12px; border-top:1px solid var(--line);
-  }
-  .margin-control label{font-size:12.5px; color:var(--sub);}
-  .margin-input-wrap{display:flex; align-items:center; gap:5px;}
-  .margin-input-wrap input{
-    width:64px; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
-    padding:6px 8px; border-radius:7px; font-family:'Roboto Mono',monospace; font-size:13px; text-align:right;
-  }
-  .margin-input-wrap span{font-size:13px; color:var(--sub);}
-  .margin-note{font-size:11px; color:var(--sub); margin-top:6px; line-height:1.5;}
+  .margin-note{font-size:11px; color:var(--sub); margin-top:10px; line-height:1.5;}
 
   .match-card{
     background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
@@ -278,15 +278,22 @@
     <div class="scan-header">
       <div>
         <div class="scan-title">Top opportunities</div>
-        <div class="scan-sub">Auto-matches titles across both platforms and ranks by margin after fees. Verify resolution details before trading any match.</div>
+        <div class="scan-sub">Auto-matches titles across both platforms, sorted by soonest close. Verify resolution details before trading any match.</div>
       </div>
       <div class="scan-controls">
+        <div class="margin-inline">
+          <label for="minMargin">Min margin</label>
+          <input type="number" id="minMargin" value="1.5" step="0.5" min="0">
+          <span>%</span>
+        </div>
         <select id="topN">
-          <option value="5">Up to 5</option>
-          <option value="10" selected>Up to 10</option>
+          <option value="5">Top 5</option>
+          <option value="10" selected>Top 10</option>
+          <option value="20">Top 20</option>
         </select>
         <button id="scanBtn">Scan now</button>
       </div>
+      <div class="scan-hint">Min margin and Top N re-filter instantly from the last scan — no need to hit Scan again unless you want fresh prices.</div>
     </div>
 
     <div class="time-filters" id="timeFilters">
@@ -299,13 +306,6 @@
       <button class="chip" data-days="30">30 days</button>
     </div>
 
-    <div class="margin-control">
-      <label for="minMargin">Min margin after fees</label>
-      <div class="margin-input-wrap">
-        <input type="number" id="minMargin" value="1.5" step="0.5" min="0">
-        <span>%</span>
-      </div>
-    </div>
     <div class="margin-note">*Annualized figure assumes you could repeat this trade continuously — a useful way to compare short vs. long-dated margins, not a real projected yield.</div>
 
     <div class="status" id="scanStatus"></div>
@@ -736,8 +736,13 @@ function renderResults(){
     const cutoff = Date.now() + selectedCloseDays * 24 * 60 * 60 * 1000;
     pool = pool.filter(c => c.closeTime && c.closeTime.getTime() <= cutoff);
   }
-  pool.sort((a, b) => b.netProfit - a.netProfit);
+  pool.sort((a, b) => b.netProfit - a.netProfit); // rank by margin to choose which N qualify
   const shown = pool.slice(0, topN);
+  shown.sort((a, b) => { // then display that shortlist soonest-closing first
+    const at = a.closeTime ? a.closeTime.getTime() : Infinity;
+    const bt = b.closeTime ? b.closeTime.getTime() : Infinity;
+    return at - bt;
+  });
 
   if(shown.length === 0){
     const windowNote = selectedCloseDays > 0 ? ` closing within ${selectedCloseDays} day(s)` : '';
