@@ -71,6 +71,17 @@ def dates_compatible(k_close_str, p_close_str):
     return abs((kd - pd).total_seconds()) <= DATE_TOLERANCE_SECONDS
 
 
+RANGE_PATTERN = re.compile(r'\d[\d,]*\.?\d*\s+to\s+\$?\d[\d,]*\.?\d*', re.IGNORECASE)
+
+
+def is_range_question(text):
+    return bool(RANGE_PATTERN.search(text or ''))
+
+
+def structure_compatible(k_text, p_text):
+    return is_range_question(k_text) == is_range_question(p_text)
+
+
 def fetch_json(url):
     req = urllib.request.Request(url, headers={
         "User-Agent": "Mozilla/5.0 (compatible; spread-watcher/1.0)",
@@ -201,9 +212,12 @@ def main():
                 continue
 
             km = kalshi_markets[i]
-            if not numbers_compatible(pm["title"], (km.get("title") or "") + " " + (km.get("subtitle") or "")):
+            k_full_text = (km.get("title") or "") + " " + (km.get("subtitle") or "")
+            if not numbers_compatible(pm["title"], k_full_text):
                 continue
             if not dates_compatible(km.get("close_time"), pm.get("endDate")):
+                continue
+            if not structure_compatible(k_full_text, pm["title"]):
                 continue
 
             ct = close_time(km.get("close_time"), pm.get("endDate"))
