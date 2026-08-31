@@ -8,7 +8,7 @@ import json
 import urllib.request
 from datetime import datetime, timezone
 
-BASE = "https://api.elections.kalshi.com/trade-api/v2/markets"
+BASE = "https://external-api.kalshi.com/trade-api/v2/markets"
 PAGE_LIMIT = 1000
 MAX_PAGES = 10  # 10 x 1000 = up to 10,000 open markets
 
