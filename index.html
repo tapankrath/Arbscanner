@@ -162,7 +162,7 @@
   .scan-title{font-size:17px; font-weight:700; font-family:'Source Serif 4', Georgia, serif;}
   .scan-sub{font-size:12.5px; color:var(--sub); margin-top:5px; line-height:1.55;}
   .scan-controls{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
-  select#topN{
+  select#topN, select#closeFilter{
     background:var(--panel-2); border:1px solid var(--line); color:var(--text);
     padding:9px 10px; border-radius:8px; font-size:13px; font-family:inherit;
   }
@@ -177,15 +177,6 @@
   }
   .margin-inline span{font-size:13px; color:var(--sub);}
   .scan-hint{font-size:11px; color:var(--sub); line-height:1.5;}
-
-  .time-filter-row{
-    display:flex; align-items:center; gap:8px; margin-top:14px;
-  }
-  .time-filter-row label{font-size:12.5px; color:var(--sub);}
-  .time-filter-row select{
-    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
-    padding:7px 10px; border-radius:8px; font-size:13px; font-family:inherit;
-  }
 
   .margin-note{font-size:11px; color:var(--sub); margin-top:10px; line-height:1.5;}
 
@@ -409,30 +400,24 @@ async function fetchKalshi(query){
 }
 
 async function fetchPolymarket(query){
-  const url = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=500&order=volume24hr&ascending=false`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error('Polymarket request failed (' + res.status + ')');
-  const data = await res.json();
+  const volumeUrl = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=400&order=volume24hr&ascending=false`;
+  const soonUrl = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=400&order=endDate&ascending=true`;
+
+  const [volRes, soonRes] = await Promise.all([fetch(volumeUrl), fetch(soonUrl)]);
+  if(!volRes.ok) throw new Error('Polymarket request failed (' + volRes.status + ')');
+  if(!soonRes.ok) throw new Error('Polymarket request failed (' + soonRes.status + ')');
+  const [volData, soonData] = await Promise.all([volRes.json(), soonRes.json()]);
+
+  const seen = new Set();
+  const merged = [];
+  [...(soonData || []), ...(volData || [])].forEach(m => {
+    if(seen.has(m.id)) return;
+    seen.add(m.id);
+    merged.push(m);
+  });
+
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  return (data || []).filter(m => matchesAllWords(m.question, words))
-    .slice(0, 30).map(m => {
-      let outcomes = [], prices = [];
-      try { outcomes = JSON.parse(m.outcomes || '[]'); } catch(e){}
-      try { prices = JSON.parse(m.outcomePrices || '[]'); } catch(e){}
-      const yesIdx = outcomes.findIndex(o => o.toLowerCase() === 'yes');
-      const noIdx = outcomes.findIndex(o => o.toLowerCase() === 'no');
-      let clobIds = [];
-      try { clobIds = JSON.parse(m.clobTokenIds || '[]'); } catch(e){}
-      return {
-        id: m.id,
-        title: m.question,
-        slug: m.slug,
-        yesTokenId: yesIdx > -1 ? clobIds[yesIdx] : null,
-        noTokenId: noIdx > -1 ? clobIds[noIdx] : null,
-        yesAsk: yesIdx > -1 ? parseFloat(prices[yesIdx]) : null,
-        noAsk: noIdx > -1 ? parseFloat(prices[noIdx]) : null,
-      };
-    });
+  return merged.filter(m => matchesAllWords(m.question, words)).slice(0, 30).map(mapPolyMarket);
 }
 
 function renderList(container, markets, platform){
@@ -723,30 +708,48 @@ function numbersCompatible(aText, bText){
   return a.some(x => b.some(y => Math.abs(x - y) <= Math.max(1, x * 0.02)));
 }
 
+function mapPolyMarket(m){
+  let outcomes = [], prices = [];
+  try { outcomes = JSON.parse(m.outcomes || '[]'); } catch(e){}
+  try { prices = JSON.parse(m.outcomePrices || '[]'); } catch(e){}
+  const yesIdx = outcomes.findIndex(o => o.toLowerCase() === 'yes');
+  const noIdx = outcomes.findIndex(o => o.toLowerCase() === 'no');
+  let clobIds = [];
+  try { clobIds = JSON.parse(m.clobTokenIds || '[]'); } catch(e){}
+  return {
+    id: m.id,
+    title: m.question,
+    slug: m.slug,
+    endDate: m.endDate,
+    yesTokenId: yesIdx > -1 ? clobIds[yesIdx] : null,
+    noTokenId: noIdx > -1 ? clobIds[noIdx] : null,
+    yesAsk: yesIdx > -1 ? parseFloat(prices[yesIdx]) : null,
+    noAsk: noIdx > -1 ? parseFloat(prices[noIdx]) : null,
+  };
+}
+
 async function loadFullPolymarket(){
-  const url = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=1000&order=volume24hr&ascending=false`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error('Polymarket request failed (' + res.status + ')');
-  const data = await res.json();
-  return (data || []).map(m => {
-    let outcomes = [], prices = [];
-    try { outcomes = JSON.parse(m.outcomes || '[]'); } catch(e){}
-    try { prices = JSON.parse(m.outcomePrices || '[]'); } catch(e){}
-    const yesIdx = outcomes.findIndex(o => o.toLowerCase() === 'yes');
-    const noIdx = outcomes.findIndex(o => o.toLowerCase() === 'no');
-    let clobIds = [];
-    try { clobIds = JSON.parse(m.clobTokenIds || '[]'); } catch(e){}
-    return {
-      id: m.id,
-      title: m.question,
-      slug: m.slug,
-      endDate: m.endDate,
-      yesTokenId: yesIdx > -1 ? clobIds[yesIdx] : null,
-      noTokenId: noIdx > -1 ? clobIds[noIdx] : null,
-      yesAsk: yesIdx > -1 ? parseFloat(prices[yesIdx]) : null,
-      noAsk: noIdx > -1 ? parseFloat(prices[noIdx]) : null,
-    };
-  }).filter(m => m.yesAsk != null && m.noAsk != null);
+  // Sorting purely by volume buries near-term/live events (a single tennis match
+  // has far less dollar volume than a $10M+ election market) — so pull a second
+  // batch sorted by soonest close and merge, to guarantee near-term events are
+  // actually in the candidate pool regardless of how much money is on them.
+  const volumeUrl = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=600&order=volume24hr&ascending=false`;
+  const soonUrl = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=600&order=endDate&ascending=true`;
+
+  const [volRes, soonRes] = await Promise.all([fetch(volumeUrl), fetch(soonUrl)]);
+  if(!volRes.ok) throw new Error('Polymarket request failed (' + volRes.status + ')');
+  if(!soonRes.ok) throw new Error('Polymarket request failed (' + soonRes.status + ')');
+  const [volData, soonData] = await Promise.all([volRes.json(), soonRes.json()]);
+
+  const seen = new Set();
+  const merged = [];
+  [...(soonData || []), ...(volData || [])].forEach(m => {
+    if(seen.has(m.id)) return;
+    seen.add(m.id);
+    merged.push(m);
+  });
+
+  return merged.map(mapPolyMarket).filter(m => m.yesAsk != null && m.noAsk != null);
 }
 
 let lastCandidates = [];
