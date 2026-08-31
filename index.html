@@ -203,10 +203,10 @@ function matchesAllWords(text, words){
 }
 
 async function fetchKalshi(query){
-  // Kalshi public markets endpoint. If this base URL has moved, check docs.kalshi.com for the current one.
-  const url = `https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=200`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error('Kalshi request failed (' + res.status + ')');
+  // Reads the snapshot built by .github/workflows/update-kalshi.yml (scripts/fetch_kalshi.py),
+  // since Kalshi's API doesn't send CORS headers that allow direct browser fetches.
+  const res = await fetch('./kalshi-markets.json', { cache: 'no-store' });
+  if(!res.ok) throw new Error('kalshi-markets.json not found (' + res.status + ') — run the "Update Kalshi markets" action once from the Actions tab');
   const data = await res.json();
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return (data.markets || []).filter(m =>
@@ -214,13 +214,13 @@ async function fetchKalshi(query){
   ).slice(0, 30).map(m => ({
     id: m.ticker,
     title: m.title + (m.subtitle ? ' — ' + m.subtitle : ''),
-    yesAsk: m.yes_ask != null ? m.yes_ask / 100 : null,
-    noAsk: m.no_ask != null ? m.no_ask / 100 : null,
+    yesAsk: m.yes_ask,
+    noAsk: m.no_ask,
   }));
 }
 
 async function fetchPolymarket(query){
-  const url = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=200`;
+  const url = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=500&order=volume24hr&ascending=false`;
   const res = await fetch(url);
   if(!res.ok) throw new Error('Polymarket request failed (' + res.status + ')');
   const data = await res.json();
