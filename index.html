@@ -91,6 +91,11 @@
   .item .px{font-size:12px; color:var(--sub); white-space:nowrap;}
   .empty-note{padding:16px 12px; font-size:13px; color:var(--sub);}
 
+  @media(max-width:420px){
+    .item{flex-direction:column; align-items:flex-start; gap:4px;}
+    .item .px{font-size:12.5px;}
+  }
+
   .ticket{
     margin-top:20px; background:var(--panel); border:1px solid var(--line);
     border-radius:12px; padding:16px;
@@ -142,16 +147,23 @@
     padding:13px; margin-top:10px; cursor:pointer;
   }
   .match-card:active{opacity:0.85;}
-  .match-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;}
+  .match-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;}
   .match-badge{
     font-size:11px; padding:3px 9px; border-radius:20px; background:var(--panel);
-    color:var(--sub); border:1px solid var(--line); white-space:nowrap;
+    color:var(--sub); border:1px solid var(--line); white-space:nowrap; font-weight:600;
   }
+  .match-badge.warn{ color:#8A5A00; border-color:#E7C46A; background:#FFF6E0; }
   .match-margin{font-weight:700; font-size:19px;}
   .match-margin.profit{color:var(--up);}
   .match-margin.loss{color:var(--down);}
-  .match-legs{font-size:13px; color:var(--sub); line-height:1.55;}
-  .match-legs .plat{color:var(--text); font-weight:500;}
+
+  .match-sidebyside{display:flex; flex-direction:column; gap:10px;}
+  @media(min-width:560px){ .match-sidebyside{flex-direction:row;} .match-side{flex:1; min-width:0;} }
+  .match-side{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 11px;}
+  .match-side-label{font-size:10.5px; font-weight:700; color:var(--sub); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:5px;}
+  .match-side-title{font-size:13.5px; font-weight:700; color:var(--text); line-height:1.42;}
+  .match-side-price{font-size:12px; color:var(--sub); margin-top:7px;}
+  .match-meta{font-size:12px; color:var(--sub); margin-top:10px;}
 
   .divider-label{
     text-align:center; font-size:12px; color:var(--sub); margin:22px 0 4px;
@@ -168,7 +180,7 @@
 
 <header>
   <div class="wrap">
-    <h1>Spread</h1>
+    <h1 id="logoHome" style="cursor:pointer;">Spread</h1>
     <p>Search the same event on Kalshi and Polymarket, pick a market from each, and see the hedged cost after fees — only worth trading if it lands under $1.</p>
   </div>
 </header>
@@ -183,8 +195,8 @@
       </div>
       <div class="scan-controls">
         <select id="topN">
-          <option value="5">Top 5</option>
-          <option value="10" selected>Top 10</option>
+          <option value="5">Up to 5</option>
+          <option value="10" selected>Up to 10</option>
         </select>
         <button id="scanBtn">Scan now</button>
       </div>
@@ -412,6 +424,24 @@ function tokenize(text){
     .filter(t => t.length > 1 && !STOPWORDS.has(t));
 }
 
+// Pulls out numbers likely to represent a strike/threshold (prices, percentages,
+// vote counts) rather than incidental years — used to catch cases where two
+// titles are wordy-similar ("Bitcoin price... above X") but reference different
+// thresholds, which word-overlap alone won't detect.
+function materialNumbers(text){
+  const raw = (text || '').match(/\d[\d,]*\.?\d*/g) || [];
+  return raw
+    .map(s => parseFloat(s.replace(/,/g, '')))
+    .filter(n => !isNaN(n))
+    .filter(n => !(n >= 1900 && n <= 2100 && Number.isInteger(n))); // drop bare years
+}
+
+function numbersCompatible(aText, bText){
+  const a = materialNumbers(aText), b = materialNumbers(bText);
+  if(a.length === 0 || b.length === 0) return true; // nothing to compare, don't block on it
+  return a.some(x => b.some(y => Math.abs(x - y) <= Math.max(1, x * 0.02)));
+}
+
 async function loadFullPolymarket(){
   const url = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=1000&order=volume24hr&ascending=false`;
   const res = await fetch(url);
@@ -494,6 +524,9 @@ async function runAutoScan(){
       if(sim < SIM_THRESHOLD) return;
 
       const km = kalshiAll[i];
+      const kFullText = (km.title||'') + ' ' + (km.subtitle||'');
+      if(!numbersCompatible(pm.title, kFullText)) return; // e.g. "$150,000" vs "$76,000" — different strikes, not a hedge
+
       [
         { label: 'Kalshi No + Polymarket Yes', a: km.no_ask, b: pm.yesAsk, kSide:'noAsk', pSide:'yesAsk' },
         { label: 'Kalshi Yes + Polymarket No', a: km.yes_ask, b: pm.noAsk, kSide:'yesAsk', pSide:'noAsk' },
@@ -508,28 +541,36 @@ async function runAutoScan(){
   });
 
   candidates.sort((a, b) => b.netProfit - a.netProfit);
-  const top = candidates.slice(0, topN);
+  const shown = candidates.filter(c => c.netProfit > 0.05).slice(0, topN);
 
-  if(top.length === 0){
-    resultsEl.innerHTML = '<div class="empty-note">No confidently-matched pairs found right now. Markets shift constantly — try again shortly, or use manual search below for a specific event.</div>';
-    scanStatus.textContent = `Checked ${candidates.length} candidate pairs above the match threshold.`;
+  if(shown.length === 0){
+    resultsEl.innerHTML = '<div class="empty-note">No matched pairs currently clear a 5% margin after fees. That\'s normal — real cross-platform arbitrage is usually thin or short-lived. Try again shortly, or use manual search below for a specific event.</div>';
+    scanStatus.textContent = `Checked ${candidates.length} candidate pairs; none cleared the 5% threshold.`;
     return;
   }
 
-  top.forEach(c => {
-    const isProfit = c.netProfit > 0;
+  shown.forEach(c => {
+    const suspicious = c.netProfit > 0.20;
     const div = document.createElement('div');
     div.className = 'match-card';
     div.innerHTML = `
       <div class="match-head">
-        <span class="match-badge">${Math.round(c.sim*100)}% title match</span>
-        <span class="match-margin ${isProfit ? 'profit' : 'loss'} mono">${isProfit ? '+' : ''}${(c.netProfit*100).toFixed(2)}%</span>
+        <span class="match-badge ${suspicious ? 'warn' : ''}">${suspicious ? '⚠ verify closely — ' : ''}${Math.round(c.sim*100)}% title match</span>
+        <span class="match-margin profit mono">+${(c.netProfit*100).toFixed(2)}%</span>
       </div>
-      <div class="match-legs">
-        <div><span class="plat">Kalshi</span> — ${c.kalshi.title}${c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''}</div>
-        <div><span class="plat">Polymarket</span> — ${c.poly.title}</div>
-        <div style="margin-top:5px;">${c.direction} · cost $${c.totalCost.toFixed(3)} per $1 payout</div>
+      <div class="match-sidebyside">
+        <div class="match-side">
+          <div class="match-side-label">Kalshi</div>
+          <div class="match-side-title">${c.kalshi.title}${c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''}</div>
+          <div class="match-side-price mono">Y ${c.kalshi.yes_ask} / N ${c.kalshi.no_ask}</div>
+        </div>
+        <div class="match-side">
+          <div class="match-side-label">Polymarket</div>
+          <div class="match-side-title">${c.poly.title}</div>
+          <div class="match-side-price mono">Y ${c.poly.yesAsk} / N ${c.poly.noAsk}</div>
+        </div>
       </div>
+      <div class="match-meta">${c.direction} · cost $${c.totalCost.toFixed(3)} per $1 payout</div>
     `;
     div.onclick = () => {
       selectedKalshi = { id: c.kalshi.ticker, title: c.kalshi.title + (c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''), yesAsk: c.kalshi.yes_ask, noAsk: c.kalshi.no_ask };
@@ -539,10 +580,21 @@ async function runAutoScan(){
     resultsEl.appendChild(div);
   });
 
-  scanStatus.textContent = `Showing top ${top.length} of ${candidates.length} matched pairs. Ranking assumes Kalshi 1.5% / Polymarket 0.5% fees — tap a card to open its ticket and adjust.`;
+  scanStatus.textContent = `Showing ${shown.length} matched pair(s) above 5% margin, out of ${candidates.length} candidates checked. Ranking assumes Kalshi 1.5% / Polymarket 0.5% fees — tap a card to open its ticket and adjust.`;
 }
 
 document.getElementById('scanBtn').onclick = runAutoScan;
+
+document.getElementById('logoHome').onclick = () => {
+  document.getElementById('query').value = '';
+  document.getElementById('scanResults').innerHTML = '';
+  document.getElementById('scanStatus').textContent = '';
+  kalshiList.innerHTML = '<div class="empty-note">Search to load markets.</div>';
+  polyList.innerHTML = '<div class="empty-note">Search to load markets.</div>';
+  selectedKalshi = null; selectedPoly = null;
+  ticket.style.display = 'none';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
 </script>
 
 </body>
