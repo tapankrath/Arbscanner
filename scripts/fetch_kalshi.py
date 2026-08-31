@@ -16,9 +16,18 @@ def fetch_page(cursor=None):
     url = f"{BASE}?status=open&limit={PAGE_LIMIT}"
     if cursor:
         url += f"&cursor={cursor}"
-    req = urllib.request.Request(url, headers={"User-Agent": "spread-arb-scanner/1.0"})
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (compatible; spread-arb-scanner/1.0)",
+        "Accept": "application/json",
+    })
     with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
+        status = resp.status
+        body = resp.read().decode()
+        data = json.loads(body)
+        if not data.get("markets"):
+            print(f"DEBUG: HTTP {status}, body length {len(body)}")
+            print(f"DEBUG: first 500 chars of response: {body[:500]}")
+        return data
 
 def main():
     all_markets = []
