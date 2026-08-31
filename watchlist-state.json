@@ -1,0 +1,21 @@
+{
+  "active": {
+    "KXBTCY-27JAN0100-B72500|3875050": {
+      "kalshiTicker": "KXBTCY-27JAN0100-B72500",
+      "polyId": "3875050",
+      "title": "Bitcoin price at the end of 2026 \u2014 70,000 to 74,999.99 \u2194 Will the price of Bitcoin be above $74,000 on September 1?",
+      "firstSeenAt": "2026-08-31T22:24:19.067746+00:00",
+      "firstSeenMargin": 0.8798575,
+      "closeTime": "2026-09-01T16:00:00+00:00",
+      "alerted": {
+        "target": true,
+        "cap": true,
+        "move": false
+      },
+      "lastCheckedAt": "2026-08-31T22:24:19.067746+00:00",
+      "lastMargin": 0.8798575,
+      "direction": "Kalshi Yes + Polymarket No"
+    }
+  },
+  "archive": {}
+}
