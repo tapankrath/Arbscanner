@@ -167,6 +167,19 @@
     padding:9px 10px; border-radius:8px; font-size:13px; font-family:inherit;
   }
 
+  .time-filters{
+    display:flex; gap:6px; overflow-x:auto; margin-top:14px; padding-bottom:3px;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none;
+  }
+  .time-filters::-webkit-scrollbar{display:none;}
+  .chip{
+    flex-shrink:0; background:var(--panel-2); border:1px solid var(--line); color:var(--sub);
+    padding:7px 13px; border-radius:20px; font-size:12.5px; font-weight:600;
+    font-family:inherit; cursor:pointer; box-shadow:none;
+  }
+  .chip:hover{opacity:0.9;}
+  .chip.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+
   .match-card{
     background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
     margin-top:10px; overflow:hidden;
@@ -261,6 +274,17 @@
         <button id="scanBtn">Scan now</button>
       </div>
     </div>
+
+    <div class="time-filters" id="timeFilters">
+      <button class="chip active" data-days="0">All</button>
+      <button class="chip" data-days="1">1 day</button>
+      <button class="chip" data-days="3">3 days</button>
+      <button class="chip" data-days="6">6 days</button>
+      <button class="chip" data-days="7">7 days</button>
+      <button class="chip" data-days="15">15 days</button>
+      <button class="chip" data-days="30">30 days</button>
+    </div>
+
     <div class="status" id="scanStatus"></div>
     <div id="scanResults"></div>
   </div>
@@ -546,14 +570,24 @@ async function loadFullPolymarket(){
       id: m.id,
       title: m.question,
       slug: m.slug,
+      endDate: m.endDate,
       yesAsk: yesIdx > -1 ? parseFloat(prices[yesIdx]) : null,
       noAsk: noIdx > -1 ? parseFloat(prices[noIdx]) : null,
     };
   }).filter(m => m.yesAsk != null && m.noAsk != null);
 }
 
+let lastCandidates = [];
+let selectedCloseDays = 0; // 0 = All
+
+function candidateCloseTime(kCloseStr, pCloseStr){
+  const kd = kCloseStr ? new Date(kCloseStr) : null;
+  const pd = pCloseStr ? new Date(pCloseStr) : null;
+  if(kd && pd) return (kd < pd ? kd : pd);
+  return kd || pd || null;
+}
+
 async function runAutoScan(){
-  const topN = parseInt(document.getElementById('topN').value, 10);
   const scanStatus = document.getElementById('scanStatus');
   const resultsEl = document.getElementById('scanResults');
   resultsEl.innerHTML = '';
@@ -617,6 +651,8 @@ async function runAutoScan(){
       const kFullText = (km.title||'') + ' ' + (km.subtitle||'');
       if(!numbersCompatible(pm.title, kFullText)) return; // e.g. "$150,000" vs "$76,000" — different strikes, not a hedge
 
+      const closeTime = candidateCloseTime(km.close_time, pm.endDate);
+
       [
         { label: 'Kalshi No + Polymarket Yes', a: km.no_ask, b: pm.yesAsk, kSide:'noAsk', pSide:'yesAsk' },
         { label: 'Kalshi Yes + Polymarket No', a: km.yes_ask, b: pm.noAsk, kSide:'yesAsk', pSide:'noAsk' },
@@ -625,17 +661,39 @@ async function runAutoScan(){
         const rawCost = d.a + d.b;
         const fees = d.a * kFeePct + d.b * pFeePct;
         const netProfit = 1 - rawCost - fees;
-        candidates.push({ kalshi: km, poly: pm, sim, direction: d.label, netProfit, totalCost: rawCost + fees });
+        candidates.push({ kalshi: km, poly: pm, sim, direction: d.label, netProfit, totalCost: rawCost + fees, closeTime });
       });
     });
   });
 
-  candidates.sort((a, b) => b.netProfit - a.netProfit);
-  const shown = candidates.filter(c => c.netProfit > 0.05).slice(0, topN);
+  lastCandidates = candidates;
+  renderResults();
+}
+
+function renderResults(){
+  const topN = parseInt(document.getElementById('topN').value, 10);
+  const scanStatus = document.getElementById('scanStatus');
+  const resultsEl = document.getElementById('scanResults');
+  resultsEl.innerHTML = '';
+  scanStatus.className = 'status';
+
+  if(lastCandidates.length === 0){
+    scanStatus.textContent = 'Tap "Scan now" to check both platforms.';
+    return;
+  }
+
+  let pool = lastCandidates.filter(c => c.netProfit > 0.05);
+  if(selectedCloseDays > 0){
+    const cutoff = Date.now() + selectedCloseDays * 24 * 60 * 60 * 1000;
+    pool = pool.filter(c => c.closeTime && c.closeTime.getTime() <= cutoff);
+  }
+  pool.sort((a, b) => b.netProfit - a.netProfit);
+  const shown = pool.slice(0, topN);
 
   if(shown.length === 0){
-    resultsEl.innerHTML = '<div class="empty-note">No matched pairs currently clear a 5% margin after fees. That\'s normal — real cross-platform arbitrage is usually thin or short-lived. Try again shortly, or use manual search below for a specific event.</div>';
-    scanStatus.textContent = `Checked ${candidates.length} candidate pairs; none cleared the 5% threshold.`;
+    const windowNote = selectedCloseDays > 0 ? ` closing within ${selectedCloseDays} day(s)` : '';
+    resultsEl.innerHTML = `<div class="empty-note">No matched pairs${windowNote} currently clear a 5% margin after fees. That's normal — real cross-platform arbitrage is usually thin or short-lived. Try a wider time window, scan again shortly, or use manual search below for a specific event.</div>`;
+    scanStatus.textContent = `Checked ${lastCandidates.length} candidate pairs; ${pool.length} matched the current filters.`;
     return;
   }
 
@@ -698,10 +756,22 @@ async function runAutoScan(){
     resultsEl.appendChild(card);
   });
 
-  scanStatus.textContent = `Showing ${shown.length} matched pair(s) above 5% margin, out of ${candidates.length} candidates checked. Ranking assumes Kalshi 1.5% / Polymarket 0.5% fees — tap a card to open its ticket and adjust.`;
+  const windowNote = selectedCloseDays > 0 ? ` closing within ${selectedCloseDays} day(s)` : '';
+  scanStatus.textContent = `Showing ${shown.length} of ${pool.length} matched pair(s)${windowNote} above 5% margin (${lastCandidates.length} candidates checked). Ranking assumes Kalshi 1.5% / Polymarket 0.5% fees — tap a card to open its ticket and adjust.`;
 }
 
 document.getElementById('scanBtn').onclick = runAutoScan;
+
+document.getElementById('topN').onchange = () => { if(lastCandidates.length) renderResults(); };
+
+document.querySelectorAll('#timeFilters .chip').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('#timeFilters .chip').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedCloseDays = parseInt(btn.dataset.days, 10);
+    if(lastCandidates.length) renderResults();
+  };
+});
 
 document.getElementById('logoHome').onclick = () => {
   document.getElementById('query').value = '';
@@ -714,6 +784,10 @@ document.getElementById('logoHome').onclick = () => {
   document.getElementById('manualSection').style.display = 'none';
   document.getElementById('manualToggle').classList.remove('open');
   document.getElementById('manualToggle').querySelector('.chevron').textContent = '›';
+  lastCandidates = [];
+  selectedCloseDays = 0;
+  document.querySelectorAll('#timeFilters .chip').forEach(b => b.classList.remove('active'));
+  document.querySelector('#timeFilters .chip[data-days="0"]').classList.add('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
