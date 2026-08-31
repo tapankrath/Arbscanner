@@ -288,18 +288,18 @@ document.getElementById('searchBtn').onclick = async () => {
     kalshiMarkets = kRes.value;
     renderList(kalshiList, kalshiMarkets, 'kalshi');
   } else {
-    kalshiList.innerHTML = '<div class="empty-note">Couldn\'t load Kalshi markets — the endpoint may be unreachable from this browser. See note below.</div>';
+    kalshiList.innerHTML = `<div class="empty-note">Kalshi fetch failed: <span class="mono">${(kRes.reason && kRes.reason.message) || kRes.reason}</span></div>`;
   }
 
   if(pRes.status === 'fulfilled'){
     polyMarkets = pRes.value;
     renderList(polyList, polyMarkets, 'poly');
   } else {
-    polyList.innerHTML = '<div class="empty-note">Couldn\'t load Polymarket markets — the endpoint may be unreachable from this browser. See note below.</div>';
+    polyList.innerHTML = `<div class="empty-note">Polymarket fetch failed: <span class="mono">${(pRes.reason && pRes.reason.message) || pRes.reason}</span></div>`;
   }
 
   if(kRes.status === 'rejected' || pRes.status === 'rejected'){
-    setStatus('One or both sources failed to load. Open browser dev tools → Network tab to see the exact error.', true);
+    setStatus('One or both sources failed — see the red text above for the exact error.', true);
   } else {
     setStatus(`Loaded ${kalshiMarkets.length} Kalshi and ${polyMarkets.length} Polymarket matches.`);
   }
