@@ -38,6 +38,15 @@
   }
   .mono{font-family:'Roboto Mono',monospace;}
 
+  .logo-btn{
+    background:none; border:none; padding:5px 8px; margin:-5px -8px -5px -8px;
+    border-radius:9px; display:inline-flex; align-items:center; gap:8px;
+    cursor:pointer; color:inherit; font:inherit; font-weight:inherit;
+  }
+  .logo-btn:hover{background:var(--panel-2);}
+  .logo-btn:active{opacity:0.7;}
+  .logo-btn svg{flex-shrink:0;}
+
   header{
     padding:22px 18px 16px;
     border-bottom:1px solid var(--line);
@@ -144,26 +153,53 @@
 
   .match-card{
     background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
-    padding:13px; margin-top:10px; cursor:pointer;
+    margin-top:10px; overflow:hidden;
   }
-  .match-card:active{opacity:0.85;}
-  .match-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;}
+  .match-summary{padding:12px 13px; cursor:pointer;}
+  .match-summary:hover{background:rgba(0,0,0,0.02);}
+  .match-summary-top{display:flex; align-items:center; gap:8px;}
   .match-badge{
     font-size:11px; padding:3px 9px; border-radius:20px; background:var(--panel);
     color:var(--sub); border:1px solid var(--line); white-space:nowrap; font-weight:600;
   }
   .match-badge.warn{ color:#8A5A00; border-color:#E7C46A; background:#FFF6E0; }
-  .match-margin{font-weight:700; font-size:19px;}
+  .match-margin{font-weight:700; font-size:17px; margin-left:auto;}
   .match-margin.profit{color:var(--up);}
   .match-margin.loss{color:var(--down);}
+  .match-summary .chevron{color:var(--sub); font-size:16px; transition:transform 0.15s; flex-shrink:0;}
+  .match-card.open .match-summary .chevron{transform:rotate(90deg);}
+  .match-preview{
+    font-size:13px; font-weight:600; color:var(--text); margin-top:7px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
 
-  .match-sidebyside{display:flex; flex-direction:column; gap:10px;}
+  .match-detail{
+    max-height:0; overflow:hidden; transition:max-height 0.2s ease;
+    padding:0 13px;
+  }
+  .match-card.open .match-detail{ max-height:600px; padding:0 13px 13px; }
+
+  .match-sidebyside{display:flex; flex-direction:column; gap:10px; padding-top:2px;}
   @media(min-width:560px){ .match-sidebyside{flex-direction:row;} .match-side{flex:1; min-width:0;} }
   .match-side{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 11px;}
   .match-side-label{font-size:10.5px; font-weight:700; color:var(--sub); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:5px;}
   .match-side-title{font-size:13.5px; font-weight:700; color:var(--text); line-height:1.42;}
   .match-side-price{font-size:12px; color:var(--sub); margin-top:7px;}
   .match-meta{font-size:12px; color:var(--sub); margin-top:10px;}
+  .use-btn{
+    width:100%; margin-top:10px; background:var(--accent); color:#fff; border:none;
+    border-radius:8px; padding:10px; font-size:13px; font-weight:600; font-family:inherit; cursor:pointer;
+  }
+
+  .divider-toggle{
+    display:flex; align-items:center; justify-content:center; gap:6px; width:100%;
+    background:none; border:none; margin:22px 0 4px; padding:10px; border-radius:9px;
+    font-size:12px; color:var(--sub); text-transform:uppercase; letter-spacing:0.05em;
+    font-family:inherit; cursor:pointer;
+  }
+  .divider-toggle:hover{background:var(--panel);}
+  .divider-toggle .chevron{transition:transform 0.15s; font-size:14px;}
+  .divider-toggle.open .chevron{transform:rotate(90deg);}
 
   .divider-label{
     text-align:center; font-size:12px; color:var(--sub); margin:22px 0 4px;
@@ -180,7 +216,15 @@
 
 <header>
   <div class="wrap">
-    <h1 id="logoHome" style="cursor:pointer;">Spread</h1>
+    <h1>
+      <button id="logoHome" class="logo-btn" title="Back to top / reset">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 17L9 11L13 15L21 7" stroke="#2557D6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M15 7H21V13" stroke="#2557D6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Spread
+      </button>
+    </h1>
     <p>Search the same event on Kalshi and Polymarket, pick a market from each, and see the hedged cost after fees — only worth trading if it lands under $1.</p>
   </div>
 </header>
@@ -205,7 +249,12 @@
     <div id="scanResults"></div>
   </div>
 
-  <div class="divider-label">or search a specific event</div>
+  <button class="divider-toggle" id="manualToggle">
+    <span>Search a specific event manually</span>
+    <span class="chevron">›</span>
+  </button>
+
+  <div id="manualSection" style="display:none;">
 
   <div class="search-row">
     <input type="text" id="query" placeholder="e.g. India Australia T20" />
@@ -238,6 +287,8 @@
     <button id="calcBtn" style="width:100%; margin-top:6px;">Compute both directions</button>
 
     <div id="resultsBox"></div>
+  </div>
+
   </div>
 
   <div class="disclaimer">
@@ -551,13 +602,23 @@ async function runAutoScan(){
 
   shown.forEach(c => {
     const suspicious = c.netProfit > 0.20;
-    const div = document.createElement('div');
-    div.className = 'match-card';
-    div.innerHTML = `
-      <div class="match-head">
-        <span class="match-badge ${suspicious ? 'warn' : ''}">${suspicious ? '⚠ verify closely — ' : ''}${Math.round(c.sim*100)}% title match</span>
+    const card = document.createElement('div');
+    card.className = 'match-card';
+
+    const summary = document.createElement('div');
+    summary.className = 'match-summary';
+    summary.innerHTML = `
+      <div class="match-summary-top">
+        <span class="match-badge ${suspicious ? 'warn' : ''}">${suspicious ? '⚠ verify — ' : ''}${Math.round(c.sim*100)}% match</span>
         <span class="match-margin profit mono">+${(c.netProfit*100).toFixed(2)}%</span>
+        <span class="chevron">›</span>
       </div>
+      <div class="match-preview">${c.kalshi.title} ↔ ${c.poly.title}</div>
+    `;
+
+    const detail = document.createElement('div');
+    detail.className = 'match-detail';
+    detail.innerHTML = `
       <div class="match-sidebyside">
         <div class="match-side">
           <div class="match-side-label">Kalshi</div>
@@ -571,13 +632,25 @@ async function runAutoScan(){
         </div>
       </div>
       <div class="match-meta">${c.direction} · cost $${c.totalCost.toFixed(3)} per $1 payout</div>
+      <button class="use-btn">Use this pair in ticket →</button>
     `;
-    div.onclick = () => {
+
+    summary.onclick = () => {
+      const isOpen = card.classList.contains('open');
+      card.classList.toggle('open', !isOpen);
+    };
+
+    detail.querySelector('.use-btn').onclick = (e) => {
+      e.stopPropagation();
       selectedKalshi = { id: c.kalshi.ticker, title: c.kalshi.title + (c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''), yesAsk: c.kalshi.yes_ask, noAsk: c.kalshi.no_ask };
       selectedPoly = { id: c.poly.id, title: c.poly.title, yesAsk: c.poly.yesAsk, noAsk: c.poly.noAsk };
+      openManualSection();
       maybeShowTicket();
     };
-    resultsEl.appendChild(div);
+
+    card.appendChild(summary);
+    card.appendChild(detail);
+    resultsEl.appendChild(card);
   });
 
   scanStatus.textContent = `Showing ${shown.length} matched pair(s) above 5% margin, out of ${candidates.length} candidates checked. Ranking assumes Kalshi 1.5% / Polymarket 0.5% fees — tap a card to open its ticket and adjust.`;
@@ -593,7 +666,24 @@ document.getElementById('logoHome').onclick = () => {
   polyList.innerHTML = '<div class="empty-note">Search to load markets.</div>';
   selectedKalshi = null; selectedPoly = null;
   ticket.style.display = 'none';
+  document.getElementById('manualSection').style.display = 'none';
+  document.getElementById('manualToggle').classList.remove('open');
+  document.getElementById('manualToggle').querySelector('.chevron').textContent = '›';
   window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+const manualToggleBtn = document.getElementById('manualToggle');
+function openManualSection(){
+  document.getElementById('manualSection').style.display = 'block';
+  manualToggleBtn.classList.add('open');
+  manualToggleBtn.querySelector('.chevron').textContent = '›';
+}
+manualToggleBtn.onclick = () => {
+  const sec = document.getElementById('manualSection');
+  const isOpen = sec.style.display !== 'none';
+  sec.style.display = isOpen ? 'none' : 'block';
+  manualToggleBtn.classList.toggle('open', !isOpen);
+  if(!isOpen) sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 };
 </script>
 
