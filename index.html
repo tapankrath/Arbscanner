@@ -201,6 +201,7 @@
     font-size:13px; font-weight:600; color:var(--text); margin-top:7px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
+  .match-close{font-size:11.5px; color:var(--sub); margin-top:4px;}
 
   .match-detail{
     max-height:0; overflow:hidden; transition:max-height 0.2s ease;
@@ -587,6 +588,17 @@ function candidateCloseTime(kCloseStr, pCloseStr){
   return kd || pd || null;
 }
 
+function formatCloseTime(date){
+  if(!date || isNaN(date.getTime())) return 'close date unknown';
+  const now = Date.now();
+  const diffMs = date.getTime() - now;
+  if(diffMs <= 0) return 'closes soon';
+  const hours = diffMs / (1000 * 60 * 60);
+  if(hours < 24) return `closes in ${Math.round(hours)}h`;
+  const days = Math.round(hours / 24);
+  return `closes in ${days}d`;
+}
+
 async function runAutoScan(){
   const scanStatus = document.getElementById('scanStatus');
   const resultsEl = document.getElementById('scanResults');
@@ -699,6 +711,7 @@ function renderResults(){
 
   shown.forEach(c => {
     const suspicious = c.netProfit > 0.20;
+    const closeLabel = formatCloseTime(c.closeTime);
     const card = document.createElement('div');
     card.className = 'match-card';
 
@@ -711,6 +724,7 @@ function renderResults(){
         <span class="chevron">›</span>
       </div>
       <div class="match-preview">${c.kalshi.title} ↔ ${c.poly.title}</div>
+      <div class="match-close">${closeLabel}</div>
     `;
 
     const kUrl = kalshiUrl(c.kalshi.ticker);
@@ -732,7 +746,7 @@ function renderResults(){
           ${pUrl ? `<a href="${pUrl}" target="_blank" rel="noopener" class="platform-link">Open on Polymarket ↗</a>` : ''}
         </div>
       </div>
-      <div class="match-meta">${c.direction} · cost $${c.totalCost.toFixed(3)} per $1 payout</div>
+      <div class="match-meta">${c.direction} · cost $${c.totalCost.toFixed(3)} per $1 payout · ${closeLabel}</div>
       <button class="use-btn">Use this pair in ticket →</button>
     `;
 
