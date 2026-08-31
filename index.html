@@ -180,6 +180,18 @@
 
   .margin-note{font-size:11px; color:var(--sub); margin-top:10px; line-height:1.5;}
 
+  .verified-header{
+    font-size:13px; font-weight:700; color:var(--text); margin-top:16px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .verified-header::before{content:'✓'; color:var(--up); font-weight:700;}
+  .verified-sub{font-size:11.5px; color:var(--sub); margin-top:3px; line-height:1.5;}
+  .verified-card{
+    background:var(--accent-soft); border:1px solid var(--line); border-radius:10px;
+    padding:12px 13px; margin-top:10px;
+  }
+  .verified-agree{font-weight:700; font-size:15px; color:var(--accent); font-family:'Roboto Mono',monospace;}
+
   .match-card{
     background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
     margin-top:10px; overflow:hidden;
@@ -295,6 +307,13 @@
     <div class="margin-note">*Annualized figure assumes you could repeat this trade continuously — a useful way to compare short vs. long-dated margins, not a real projected yield.</div>
 
     <div class="status" id="scanStatus"></div>
+
+    <div id="verifiedSection" style="display:none;">
+      <div class="verified-header">Verified matches</div>
+      <div class="verified-sub">Prices agree closely on both platforms — strong evidence these are genuinely the same event, even if there's little or no margin to trade right now.</div>
+      <div id="verifiedResults"></div>
+    </div>
+
     <div id="scanResults"></div>
   </div>
 
@@ -852,6 +871,14 @@ async function runAutoScan(){
 
       const closeTime = candidateCloseTime(km.close_time, pm.endDate);
 
+      // Independent signal from title similarity: if both platforms are pricing the
+      // same real event, their "Yes" prices should roughly agree. Wide disagreement
+      // often means the titles happen to overlap but the underlying bet differs
+      // (this is what caught the earlier Bitcoin-strike false positive too).
+      const priceAgreement = (km.yes_ask != null && pm.yesAsk != null)
+        ? Math.max(0, 1 - Math.abs(km.yes_ask - pm.yesAsk))
+        : null;
+
       [
         { label: 'Kalshi No + Polymarket Yes', a: km.no_ask, b: pm.yesAsk, kSide:'noAsk', pSide:'yesAsk' },
         { label: 'Kalshi Yes + Polymarket No', a: km.yes_ask, b: pm.noAsk, kSide:'yesAsk', pSide:'noAsk' },
@@ -860,7 +887,7 @@ async function runAutoScan(){
         const rawCost = d.a + d.b;
         const fees = d.a * kFeePct + d.b * pFeePct;
         const netProfit = 1 - rawCost - fees;
-        candidates.push({ kalshi: km, poly: pm, sim, direction: d.label, netProfit, totalCost: rawCost + fees, closeTime });
+        candidates.push({ kalshi: km, poly: pm, sim, priceAgreement, direction: d.label, netProfit, totalCost: rawCost + fees, closeTime });
       });
     });
   });
@@ -878,7 +905,47 @@ function renderResults(){
 
   if(lastCandidates.length === 0){
     scanStatus.textContent = 'Tap "Scan now" to check both platforms.';
+    document.getElementById('verifiedSection').style.display = 'none';
     return;
+  }
+
+  // --- Verified matches: high price agreement is independent evidence of a real
+  // match, separate from margin. Shown as a trust reference, not ranked by profit. ---
+  let verifiedPool = lastCandidates.filter(c => c.priceAgreement != null && c.priceAgreement >= 0.90 && c.sim >= 0.35);
+  if(selectedCloseDays > 0){
+    const cutoff = Date.now() + selectedCloseDays * 24 * 60 * 60 * 1000;
+    verifiedPool = verifiedPool.filter(c => c.closeTime && c.closeTime.getTime() <= cutoff);
+  }
+  verifiedPool.sort((a, b) => b.priceAgreement - a.priceAgreement);
+  const seenPairs = new Set();
+  const verifiedShown = [];
+  verifiedPool.forEach(c => {
+    const key = c.kalshi.ticker + '|' + c.poly.id;
+    if(seenPairs.has(key)) return;
+    seenPairs.add(key);
+    if(verifiedShown.length < 5) verifiedShown.push(c);
+  });
+
+  const verifiedSection = document.getElementById('verifiedSection');
+  const verifiedResultsEl = document.getElementById('verifiedResults');
+  if(verifiedShown.length > 0){
+    verifiedSection.style.display = 'block';
+    verifiedResultsEl.innerHTML = '';
+    verifiedShown.forEach(c => {
+      const el = document.createElement('div');
+      el.className = 'verified-card';
+      el.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <span class="match-badge">${Math.round(c.sim*100)}% title match</span>
+          <span class="verified-agree">${Math.round(c.priceAgreement*100)}% price agree</span>
+        </div>
+        <div class="match-preview" style="margin-top:8px;">${c.kalshi.title} ↔ ${c.poly.title}</div>
+        <div class="match-close">${formatCloseTime(c.closeTime)} · Kalshi Yes ${Math.round(c.kalshi.yes_ask*100)}% vs Polymarket Yes ${Math.round(c.poly.yesAsk*100)}%</div>
+      `;
+      verifiedResultsEl.appendChild(el);
+    });
+  } else {
+    verifiedSection.style.display = 'none';
   }
 
   const minMarginPct = (parseFloat(document.getElementById('minMargin').value) || 0) / 100;
@@ -914,7 +981,7 @@ function renderResults(){
     summary.className = 'match-summary';
     summary.innerHTML = `
       <div class="match-summary-top">
-        <span class="match-badge ${suspicious ? 'warn' : ''}">${suspicious ? '⚠ verify — ' : ''}${Math.round(c.sim*100)}% match</span>
+        <span class="match-badge ${suspicious ? 'warn' : ''}">${suspicious ? '⚠ verify — ' : ''}${Math.round(c.sim*100)}% title match${c.priceAgreement != null ? ' · ' + Math.round(c.priceAgreement*100) + '% price agree' : ''}</span>
         <span class="match-margin profit mono">+${(c.netProfit*100).toFixed(2)}%</span>
         <span class="chevron">›</span>
       </div>
@@ -993,6 +1060,7 @@ document.getElementById('logoHome').onclick = () => {
   lastCandidates = [];
   selectedCloseDays = 0;
   document.getElementById('closeFilter').value = '0';
+  document.getElementById('verifiedSection').style.display = 'none';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
