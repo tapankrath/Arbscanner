@@ -1,5 +1,6 @@
 {
-  "active": {
+  "active": {},
+  "archive": {
     "KXBTCY-27JAN0100-B72500|3875050": {
       "kalshiTicker": "KXBTCY-27JAN0100-B72500",
       "polyId": "3875050",
@@ -14,8 +15,9 @@
       },
       "lastCheckedAt": "2026-08-31T22:24:19.067746+00:00",
       "lastMargin": 0.8798575,
-      "direction": "Kalshi Yes + Polymarket No"
+      "direction": "Kalshi Yes + Polymarket No",
+      "archiveReason": "no_longer_matched",
+      "archivedAt": "2026-08-31T22:30:04.149934+00:00"
     }
-  },
-  "archive": {}
+  }
 }
