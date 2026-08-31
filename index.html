@@ -178,18 +178,14 @@
   .margin-inline span{font-size:13px; color:var(--sub);}
   .scan-hint{font-size:11px; color:var(--sub); line-height:1.5;}
 
-  .time-filters{
-    display:flex; gap:6px; overflow-x:auto; margin-top:14px; padding-bottom:3px;
-    -webkit-overflow-scrolling:touch; scrollbar-width:none;
+  .time-filter-row{
+    display:flex; align-items:center; gap:8px; margin-top:14px;
   }
-  .time-filters::-webkit-scrollbar{display:none;}
-  .chip{
-    flex-shrink:0; background:var(--panel-2); border:1px solid var(--line); color:var(--sub);
-    padding:7px 13px; border-radius:20px; font-size:12.5px; font-weight:600;
-    font-family:inherit; cursor:pointer; box-shadow:none;
+  .time-filter-row label{font-size:12.5px; color:var(--sub);}
+  .time-filter-row select{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:7px 10px; border-radius:8px; font-size:13px; font-family:inherit;
   }
-  .chip:hover{opacity:0.9;}
-  .chip.active{background:var(--accent); color:#fff; border-color:var(--accent);}
 
   .margin-note{font-size:11px; color:var(--sub); margin-top:10px; line-height:1.5;}
 
@@ -291,19 +287,18 @@
           <option value="10" selected>Top 10</option>
           <option value="20">Top 20</option>
         </select>
+        <select id="closeFilter">
+          <option value="0" selected>Closes: All</option>
+          <option value="1">Closes: 1 day</option>
+          <option value="3">Closes: 3 days</option>
+          <option value="6">Closes: 6 days</option>
+          <option value="7">Closes: 7 days</option>
+          <option value="15">Closes: 15 days</option>
+          <option value="30">Closes: 30 days</option>
+        </select>
         <button id="scanBtn">Scan now</button>
       </div>
-      <div class="scan-hint">Min margin and Top N re-filter instantly from the last scan — no need to hit Scan again unless you want fresh prices.</div>
-    </div>
-
-    <div class="time-filters" id="timeFilters">
-      <button class="chip active" data-days="0">All</button>
-      <button class="chip" data-days="1">1 day</button>
-      <button class="chip" data-days="3">3 days</button>
-      <button class="chip" data-days="6">6 days</button>
-      <button class="chip" data-days="7">7 days</button>
-      <button class="chip" data-days="15">15 days</button>
-      <button class="chip" data-days="30">30 days</button>
+      <div class="scan-hint">All filters re-apply instantly from the last scan — no need to hit Scan again unless you want fresh prices.</div>
     </div>
 
     <div class="margin-note">*Annualized figure assumes you could repeat this trade continuously — a useful way to compare short vs. long-dated margins, not a real projected yield.</div>
@@ -976,14 +971,10 @@ document.getElementById('scanBtn').onclick = runAutoScan;
 document.getElementById('topN').onchange = () => { if(lastCandidates.length) renderResults(); };
 document.getElementById('minMargin').oninput = () => { if(lastCandidates.length) renderResults(); };
 
-document.querySelectorAll('#timeFilters .chip').forEach(btn => {
-  btn.onclick = () => {
-    document.querySelectorAll('#timeFilters .chip').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    selectedCloseDays = parseInt(btn.dataset.days, 10);
-    if(lastCandidates.length) renderResults();
-  };
-});
+document.getElementById('closeFilter').onchange = (e) => {
+  selectedCloseDays = parseInt(e.target.value, 10);
+  if(lastCandidates.length) renderResults();
+};
 
 document.getElementById('logoHome').onclick = () => {
   document.getElementById('query').value = '';
@@ -998,8 +989,7 @@ document.getElementById('logoHome').onclick = () => {
   document.getElementById('manualToggle').querySelector('.chevron').textContent = '›';
   lastCandidates = [];
   selectedCloseDays = 0;
-  document.querySelectorAll('#timeFilters .chip').forEach(b => b.classList.remove('active'));
-  document.querySelector('#timeFilters .chip[data-days="0"]').classList.add('active');
+  document.getElementById('closeFilter').value = '0';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
