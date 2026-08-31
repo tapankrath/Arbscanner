@@ -352,6 +352,9 @@
     <button id="calcBtn" style="width:100%; margin-top:6px;">Compute both directions</button>
 
     <div id="resultsBox"></div>
+
+    <button id="depthBtn" class="ghost" style="width:100%; margin-top:10px;">Check live order-book depth (experimental)</button>
+    <div id="depthBox"></div>
   </div>
 
   </div>
@@ -423,10 +426,14 @@ async function fetchPolymarket(query){
       try { prices = JSON.parse(m.outcomePrices || '[]'); } catch(e){}
       const yesIdx = outcomes.findIndex(o => o.toLowerCase() === 'yes');
       const noIdx = outcomes.findIndex(o => o.toLowerCase() === 'no');
+      let clobIds = [];
+      try { clobIds = JSON.parse(m.clobTokenIds || '[]'); } catch(e){}
       return {
         id: m.id,
         title: m.question,
         slug: m.slug,
+        yesTokenId: yesIdx > -1 ? clobIds[yesIdx] : null,
+        noTokenId: noIdx > -1 ? clobIds[noIdx] : null,
         yesAsk: yesIdx > -1 ? parseFloat(prices[yesIdx]) : null,
         noAsk: noIdx > -1 ? parseFloat(prices[noIdx]) : null,
       };
@@ -541,6 +548,149 @@ document.getElementById('calcBtn').onclick = () => {
   }
 };
 
+// ---------- Live order-book depth (experimental) ----------
+
+const KALSHI_ORDERBOOK_BASE = 'https://external-api.kalshi.com/trade-api/v2/markets';
+const CORS_PROXY = 'https://corsproxy.io/?url=';
+
+async function fetchKalshiOrderbook(ticker){
+  const directUrl = `${KALSHI_ORDERBOOK_BASE}/${ticker}/orderbook`;
+  let res;
+  try {
+    res = await fetch(directUrl);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+  } catch(directErr){
+    // Kalshi's orderbook endpoint doesn't send CORS headers for browser fetches (same issue
+    // as the general /markets listing) — fall back to a public CORS relay. This is a third-party
+    // dependency and may be rate-limited or occasionally unavailable.
+    res = await fetch(CORS_PROXY + encodeURIComponent(directUrl));
+    if(!res.ok) throw new Error('Kalshi orderbook unavailable direct or via proxy (' + res.status + ')');
+  }
+  const data = await res.json();
+  const ob = data.orderbook_fp || {};
+  // Kalshi only publishes BID levels for yes/no. A yes bid at price P is economically
+  // identical to a no ask at (1 - P), so we derive the ask books we actually need to buy into.
+  const toAskLevels = (bidLevels) => (bidLevels || [])
+    .map(([priceStr, sizeStr]) => ({ price: 1 - parseFloat(priceStr), size: parseFloat(sizeStr) }))
+    .filter(l => !isNaN(l.price) && !isNaN(l.size))
+    .sort((a, b) => a.price - b.price);
+  return {
+    yesAskLevels: toAskLevels(ob.no_dollars),  // buying Yes = betting against the No bids
+    noAskLevels: toAskLevels(ob.yes_dollars),  // buying No = betting against the Yes bids
+  };
+}
+
+async function fetchPolymarketOrderbook(tokenId){
+  const res = await fetch(`https://clob.polymarket.com/book?token_id=${tokenId}`);
+  if(!res.ok) throw new Error('Polymarket book request failed (' + res.status + ')');
+  const data = await res.json();
+  const levels = (data.asks || [])
+    .map(a => ({ price: parseFloat(a.price), size: parseFloat(a.size) }))
+    .filter(l => !isNaN(l.price) && !isNaN(l.size))
+    .sort((a, b) => a.price - b.price);
+  return levels;
+}
+
+function walkBook(levels, qty){
+  let remaining = qty, cost = 0, filled = 0;
+  for(const lvl of levels){
+    if(remaining <= 0) break;
+    const take = Math.min(remaining, lvl.size);
+    cost += take * lvl.price;
+    filled += take;
+    remaining -= take;
+  }
+  return { filled, cost }; // filled may be less than qty if the book runs out
+}
+
+// Finds the largest integer quantity where buying that many contracts on BOTH legs
+// (walking each book) still nets a profit after fees, i.e. avg combined cost < $1.
+function computeMaxSafeSize(kLevels, pLevels, kFeePct, pFeePct){
+  const maxPossible = Math.min(
+    kLevels.reduce((s, l) => s + l.size, 0),
+    pLevels.reduce((s, l) => s + l.size, 0)
+  );
+  if(maxPossible < 1) return { maxQty: 0, avgCost: null };
+
+  let lo = 0, hi = Math.floor(maxPossible), best = 0, bestAvgCost = null;
+  // Linear scan is fine here — book depth is a handful of price levels and qty is capped.
+  for(let q = 1; q <= hi; q++){
+    const k = walkBook(kLevels, q);
+    const p = walkBook(pLevels, q);
+    if(k.filled < q || p.filled < q) break; // ran out of depth on one side
+    const avgK = k.cost / q, avgP = p.cost / q;
+    const combinedCost = avgK + avgP + avgK * kFeePct + avgP * pFeePct;
+    if(combinedCost < 1){
+      best = q;
+      bestAvgCost = combinedCost;
+    } else {
+      break; // avg cost only rises (or stays flat) as you walk deeper into the book
+    }
+  }
+  return { maxQty: best, avgCost: bestAvgCost };
+}
+
+document.getElementById('depthBtn').onclick = async () => {
+  const depthBox = document.getElementById('depthBox');
+  depthBox.innerHTML = '<div class="empty-note">Fetching live order books from both platforms…</div>';
+
+  const kFeePct = parseFloat(document.getElementById('kFee').value) / 100 || 0;
+  const pFeePct = parseFloat(document.getElementById('pFee').value) / 100 || 0;
+
+  let kBooks;
+  try {
+    kBooks = await fetchKalshiOrderbook(selectedKalshi.id);
+  } catch(e){
+    depthBox.innerHTML = `<div class="empty-note">Kalshi order book failed: ${e.message}</div>`;
+    return;
+  }
+
+  if(!selectedPoly.yesTokenId && !selectedPoly.noTokenId){
+    depthBox.innerHTML = '<div class="empty-note">This Polymarket pick is missing its order-book token ID — try reselecting it from a fresh search or scan.</div>';
+    return;
+  }
+
+  let pYesBook = [], pNoBook = [];
+  try {
+    if(selectedPoly.yesTokenId) pYesBook = await fetchPolymarketOrderbook(selectedPoly.yesTokenId);
+    if(selectedPoly.noTokenId) pNoBook = await fetchPolymarketOrderbook(selectedPoly.noTokenId);
+  } catch(e){
+    depthBox.innerHTML = `<div class="empty-note">Polymarket order book failed: ${e.message}</div>`;
+    return;
+  }
+
+  const dirs = [
+    { label: 'Kalshi No + Polymarket Yes', kLevels: kBooks.noAskLevels, pLevels: pYesBook },
+    { label: 'Kalshi Yes + Polymarket No', kLevels: kBooks.yesAskLevels, pLevels: pNoBook },
+  ];
+
+  depthBox.innerHTML = '';
+  dirs.forEach(d => {
+    if(d.kLevels.length === 0 || d.pLevels.length === 0){
+      const el = document.createElement('div');
+      el.className = 'result';
+      el.innerHTML = `<div class="small">${d.label}</div><div class="small">No depth available on one side right now.</div>`;
+      depthBox.appendChild(el);
+      return;
+    }
+
+    const { maxQty, avgCost } = computeMaxSafeSize(d.kLevels, d.pLevels, kFeePct, pFeePct);
+    const suspicious = (d.kLevels[0].price <= 0.02 || d.kLevels[0].price >= 0.98 ||
+                         d.pLevels[0].price <= 0.02 || d.pLevels[0].price >= 0.98);
+
+    const el = document.createElement('div');
+    el.className = 'result ' + (maxQty > 0 ? 'profit' : 'loss');
+    el.innerHTML = `
+      <div class="small">${d.label}${suspicious ? ' · ⚠ extreme top-of-book price — book may be stale/thin, verify manually' : ''}</div>
+      <div class="big mono">${maxQty > 0 ? maxQty.toLocaleString() + ' contracts' : 'No safe size'}</div>
+      <div class="small">${maxQty > 0
+        ? `≈ $${(maxQty * (avgCost||0)).toFixed(0)} total stake before the edge disappears (avg cost $${(avgCost||0).toFixed(3)}/contract)`
+        : 'Best available price already clears $1 after fees at this depth.'}</div>
+    `;
+    depthBox.appendChild(el);
+  });
+};
+
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -589,11 +739,15 @@ async function loadFullPolymarket(){
     try { prices = JSON.parse(m.outcomePrices || '[]'); } catch(e){}
     const yesIdx = outcomes.findIndex(o => o.toLowerCase() === 'yes');
     const noIdx = outcomes.findIndex(o => o.toLowerCase() === 'no');
+    let clobIds = [];
+    try { clobIds = JSON.parse(m.clobTokenIds || '[]'); } catch(e){}
     return {
       id: m.id,
       title: m.question,
       slug: m.slug,
       endDate: m.endDate,
+      yesTokenId: yesIdx > -1 ? clobIds[yesIdx] : null,
+      noTokenId: noIdx > -1 ? clobIds[noIdx] : null,
       yesAsk: yesIdx > -1 ? parseFloat(prices[yesIdx]) : null,
       noAsk: noIdx > -1 ? parseFloat(prices[noIdx]) : null,
     };
@@ -803,7 +957,7 @@ function renderResults(){
     detail.querySelector('.use-btn').onclick = (e) => {
       e.stopPropagation();
       selectedKalshi = { id: c.kalshi.ticker, title: c.kalshi.title + (c.kalshi.subtitle ? ' — ' + c.kalshi.subtitle : ''), yesAsk: c.kalshi.yes_ask, noAsk: c.kalshi.no_ask };
-      selectedPoly = { id: c.poly.id, title: c.poly.title, slug: c.poly.slug, yesAsk: c.poly.yesAsk, noAsk: c.poly.noAsk };
+      selectedPoly = { id: c.poly.id, title: c.poly.title, slug: c.poly.slug, yesTokenId: c.poly.yesTokenId, noTokenId: c.poly.noTokenId, yesAsk: c.poly.yesAsk, noAsk: c.poly.noAsk };
       openManualSection();
       maybeShowTicket();
     };
