@@ -192,6 +192,24 @@
   }
   .verified-agree{font-weight:700; font-size:15px; color:var(--accent); font-family:'Roboto Mono',monospace;}
 
+  .watch-card{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    padding:12px 13px; margin-top:10px;
+  }
+  .watch-card.archived{opacity:0.75;}
+  .watch-title{font-size:13.5px; font-weight:700; color:var(--text); line-height:1.4;}
+  .watch-row{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:7px;}
+  .watch-delta{font-family:'Roboto Mono',monospace; font-size:13px;}
+  .watch-delta.up{color:var(--up);}
+  .watch-delta.down{color:var(--down);}
+  .watch-meta{font-size:11.5px; color:var(--sub); margin-top:5px;}
+  .watch-tags{display:flex; gap:5px; margin-top:7px; flex-wrap:wrap;}
+  .watch-tag{
+    font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:20px;
+    background:var(--accent-soft); color:var(--accent);
+  }
+  .watch-tag.cap{background:#FFF6E0; color:#8A5A00;}
+
   .match-card{
     background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
     margin-top:10px; overflow:hidden;
@@ -315,6 +333,24 @@
     </div>
 
     <div id="scanResults"></div>
+  </div>
+
+  <div class="scan-section" style="margin-top:18px;">
+    <div class="scan-header">
+      <div>
+        <div class="scan-title">Watchlist</div>
+        <div class="scan-sub">Auto-tracks matches closing within 7 days, checked every 15 minutes in the background — no need to keep this page open. Pushes an alert when margin hits a target, exceeds a cap, or moves meaningfully from when it was first spotted.</div>
+      </div>
+    </div>
+    <button id="watchlistRefreshBtn" class="ghost" style="margin-top:12px;">Refresh watchlist</button>
+    <div class="status" id="watchlistStatus"></div>
+    <div id="watchlistActive"></div>
+
+    <button class="divider-toggle" id="archiveToggle">
+      <span>Archived (closed or no longer matching)</span>
+      <span class="chevron">›</span>
+    </button>
+    <div id="watchlistArchive" style="display:none;"></div>
   </div>
 
   <button class="divider-toggle" id="manualToggle">
@@ -1045,6 +1081,83 @@ document.getElementById('closeFilter').onchange = (e) => {
   selectedCloseDays = parseInt(e.target.value, 10);
   if(lastCandidates.length) renderResults();
 };
+
+// ---------- Watchlist (auto-tracked in the background by watch_and_alert.py) ----------
+
+function formatPct(v){ return (v*100).toFixed(2) + '%'; }
+
+function renderWatchCard(entry, archived){
+  const delta = entry.lastMargin != null ? entry.lastMargin - entry.firstSeenMargin : 0;
+  const deltaClass = delta > 0 ? 'up' : (delta < 0 ? 'down' : '');
+  const tags = [];
+  if(entry.alerted){
+    if(entry.alerted.target) tags.push('<span class="watch-tag">Target hit</span>');
+    if(entry.alerted.cap) tags.push('<span class="watch-tag cap">⚠ Cap exceeded</span>');
+    if(entry.alerted.move) tags.push('<span class="watch-tag">Moved</span>');
+  }
+  const div = document.createElement('div');
+  div.className = 'watch-card' + (archived ? ' archived' : '');
+  div.innerHTML = `
+    <div class="watch-title">${entry.title}</div>
+    <div class="watch-row">
+      <span class="mono">${entry.lastMargin != null ? formatPct(entry.lastMargin) : '—'}</span>
+      <span class="watch-delta ${deltaClass} mono">${delta !== 0 ? (delta > 0 ? '+' : '') + formatPct(delta) + ' since first seen' : 'unchanged'}</span>
+    </div>
+    <div class="watch-meta">${entry.direction || ''} · first seen ${entry.firstSeenAt ? new Date(entry.firstSeenAt).toLocaleString() : '—'}${archived ? ' · archived: ' + (entry.archiveReason || '') : ''}</div>
+    ${tags.length ? `<div class="watch-tags">${tags.join('')}</div>` : ''}
+  `;
+  return div;
+}
+
+async function loadWatchlist(){
+  const statusEl = document.getElementById('watchlistStatus');
+  const activeEl = document.getElementById('watchlistActive');
+  const archiveEl = document.getElementById('watchlistArchive');
+  statusEl.className = 'status';
+  statusEl.textContent = 'Loading…';
+
+  let state;
+  try {
+    const res = await fetch('./watchlist-state.json', { cache: 'no-store' });
+    if(!res.ok) throw new Error('watchlist-state.json not found (' + res.status + ') — run the "Watch and alert" action once from the Actions tab');
+    state = await res.json();
+  } catch(e){
+    statusEl.textContent = e.message;
+    statusEl.className = 'status err';
+    activeEl.innerHTML = '';
+    return;
+  }
+
+  const active = Object.values(state.active || {});
+  const archive = Object.values(state.archive || {});
+
+  activeEl.innerHTML = '';
+  if(active.length === 0){
+    activeEl.innerHTML = '<div class="empty-note">Nothing actively tracked right now — the background job populates this automatically as matches closing within 7 days appear.</div>';
+  } else {
+    active.sort((a, b) => (b.lastMargin || 0) - (a.lastMargin || 0));
+    active.forEach(e => activeEl.appendChild(renderWatchCard(e, false)));
+  }
+
+  archiveEl.innerHTML = archive.length === 0
+    ? '<div class="empty-note">Nothing archived yet.</div>'
+    : '';
+  archive.sort((a, b) => new Date(b.archivedAt || 0) - new Date(a.archivedAt || 0));
+  archive.forEach(e => archiveEl.appendChild(renderWatchCard(e, true)));
+
+  statusEl.textContent = `${active.length} active, ${archive.length} archived total.`;
+}
+
+document.getElementById('watchlistRefreshBtn').onclick = loadWatchlist;
+
+document.getElementById('archiveToggle').onclick = () => {
+  const el = document.getElementById('watchlistArchive');
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  document.getElementById('archiveToggle').classList.toggle('open', !isOpen);
+};
+
+loadWatchlist();
 
 document.getElementById('logoHome').onclick = () => {
   document.getElementById('query').value = '';
