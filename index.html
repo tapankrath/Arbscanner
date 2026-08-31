@@ -180,6 +180,19 @@
   .chip:hover{opacity:0.9;}
   .chip.active{background:var(--accent); color:#fff; border-color:var(--accent);}
 
+  .margin-control{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    margin-top:12px; padding-top:12px; border-top:1px solid var(--line);
+  }
+  .margin-control label{font-size:12.5px; color:var(--sub);}
+  .margin-input-wrap{display:flex; align-items:center; gap:5px;}
+  .margin-input-wrap input{
+    width:64px; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:6px 8px; border-radius:7px; font-family:'Roboto Mono',monospace; font-size:13px; text-align:right;
+  }
+  .margin-input-wrap span{font-size:13px; color:var(--sub);}
+  .margin-note{font-size:11px; color:var(--sub); margin-top:6px; line-height:1.5;}
+
   .match-card{
     background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
     margin-top:10px; overflow:hidden;
@@ -285,6 +298,15 @@
       <button class="chip" data-days="15">15 days</button>
       <button class="chip" data-days="30">30 days</button>
     </div>
+
+    <div class="margin-control">
+      <label for="minMargin">Min margin after fees</label>
+      <div class="margin-input-wrap">
+        <input type="number" id="minMargin" value="1.5" step="0.5" min="0">
+        <span>%</span>
+      </div>
+    </div>
+    <div class="margin-note">*Annualized figure assumes you could repeat this trade continuously — a useful way to compare short vs. long-dated margins, not a real projected yield.</div>
 
     <div class="status" id="scanStatus"></div>
     <div id="scanResults"></div>
@@ -599,6 +621,19 @@ function formatCloseTime(date){
   return `closes in ${days}d`;
 }
 
+// Rough annualized-return context: a thin margin locked in for only a few days
+// can be a far better trade than a bigger margin tied up for months. Capital
+// isn't actually reusable this fast in practice, so treat this as a comparison
+// tool, not a real yield projection.
+function formatAnnualized(netProfit, closeDate){
+  if(!closeDate || isNaN(closeDate.getTime())) return null;
+  const daysToClose = (closeDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+  if(daysToClose < 0.25) return null; // too close to expiry for an annualized figure to mean anything
+  const annualized = (netProfit / daysToClose) * 365;
+  if(annualized > 20) return '≈ >2000%/yr*';
+  return `≈ ${Math.round(annualized * 100)}%/yr*`;
+}
+
 async function runAutoScan(){
   const scanStatus = document.getElementById('scanStatus');
   const resultsEl = document.getElementById('scanResults');
@@ -694,7 +729,9 @@ function renderResults(){
     return;
   }
 
-  let pool = lastCandidates.filter(c => c.netProfit > 0.05);
+  const minMarginPct = (parseFloat(document.getElementById('minMargin').value) || 0) / 100;
+
+  let pool = lastCandidates.filter(c => c.netProfit > minMarginPct);
   if(selectedCloseDays > 0){
     const cutoff = Date.now() + selectedCloseDays * 24 * 60 * 60 * 1000;
     pool = pool.filter(c => c.closeTime && c.closeTime.getTime() <= cutoff);
@@ -704,7 +741,7 @@ function renderResults(){
 
   if(shown.length === 0){
     const windowNote = selectedCloseDays > 0 ? ` closing within ${selectedCloseDays} day(s)` : '';
-    resultsEl.innerHTML = `<div class="empty-note">No matched pairs${windowNote} currently clear a 5% margin after fees. That's normal — real cross-platform arbitrage is usually thin or short-lived. Try a wider time window, scan again shortly, or use manual search below for a specific event.</div>`;
+    resultsEl.innerHTML = `<div class="empty-note">No matched pairs${windowNote} currently clear ${(minMarginPct*100).toFixed(1)}% margin after fees. Try lowering the min margin above, widen the time window, scan again shortly, or use manual search below for a specific event.</div>`;
     scanStatus.textContent = `Checked ${lastCandidates.length} candidate pairs; ${pool.length} matched the current filters.`;
     return;
   }
@@ -712,6 +749,7 @@ function renderResults(){
   shown.forEach(c => {
     const suspicious = c.netProfit > 0.20;
     const closeLabel = formatCloseTime(c.closeTime);
+    const annualizedLabel = formatAnnualized(c.netProfit, c.closeTime);
     const card = document.createElement('div');
     card.className = 'match-card';
 
@@ -724,7 +762,7 @@ function renderResults(){
         <span class="chevron">›</span>
       </div>
       <div class="match-preview">${c.kalshi.title} ↔ ${c.poly.title}</div>
-      <div class="match-close">${closeLabel}</div>
+      <div class="match-close">${closeLabel}${annualizedLabel ? ' · ' + annualizedLabel : ''}</div>
     `;
 
     const kUrl = kalshiUrl(c.kalshi.ticker);
@@ -771,12 +809,13 @@ function renderResults(){
   });
 
   const windowNote = selectedCloseDays > 0 ? ` closing within ${selectedCloseDays} day(s)` : '';
-  scanStatus.textContent = `Showing ${shown.length} of ${pool.length} matched pair(s)${windowNote} above 5% margin (${lastCandidates.length} candidates checked). Ranking assumes Kalshi 1.5% / Polymarket 0.5% fees — tap a card to open its ticket and adjust.`;
+  scanStatus.textContent = `Showing ${shown.length} of ${pool.length} matched pair(s)${windowNote} above ${(minMarginPct*100).toFixed(1)}% margin (${lastCandidates.length} candidates checked). Ranking assumes Kalshi 1.5% / Polymarket 0.5% fees — tap a card to open its ticket and adjust.`;
 }
 
 document.getElementById('scanBtn').onclick = runAutoScan;
 
 document.getElementById('topN').onchange = () => { if(lastCandidates.length) renderResults(); };
+document.getElementById('minMargin').oninput = () => { if(lastCandidates.length) renderResults(); };
 
 document.querySelectorAll('#timeFilters .chip').forEach(btn => {
   btn.onclick = () => {
